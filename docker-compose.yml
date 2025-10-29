@@ -27,7 +27,7 @@ services:
     ports:
       - "58890:58888"
     volumes:
-      - octo_profiles:/home/octo/.config
+      - ./docker_octo/cache:/home/octo/.Octo Browser/
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
     networks:
       - aisexter_network
@@ -36,9 +36,8 @@ services:
     environment:
       - DISPLAY=:1
       - XDG_RUNTIME_DIR=/tmp/runtime-octo
-
-volumes:
-  octo_profiles:
+    stdin_open: true
+    tty: true
 
 networks:
   aisexter_network:

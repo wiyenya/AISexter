@@ -163,16 +163,48 @@ CLICKHOUSE_CONFIG = {
 
 ### Вимоги
 
-1. Встановлений Octo Browser
-2. Створені профілі з тегом `parserChat`
+1. Встановлений Octo Browser (в Docker контейнері)
+2. Створені профілі з тегом `parserChat` в Cloud Octo Browser
 3. API token з Octo Browser панелі
 
-### Налаштування профілів
+### Перший запуск - Синхронізація профілів ⚠️
 
-1. Відкрийте Octo Browser
+**Важливо!** При першому запуску потрібно синхронізувати Cloud профілі з локальним Octo Browser контейнером:
+
+```bash
+# На сервері, після docker-compose up
+sudo docker exec -it aisexter_octo_new /bin/bash
+
+# Всередині контейнера:
+# 1. Відкрийте Octo Browser UI (якщо можливо)
+# 2. Авторизуйтеся через GUI
+# 3. Профілі автоматично синхронізуються
+
+# Альтернативно: використайте існуючий кеш профілів
+# Скопіюйте папку docker_octo/cache з іншого проекту (OFCRM-1)
+```
+
+**Швидкий спосіб - використати існуючий кеш:**
+
+```bash
+# На сервері
+cd ~/AIsexter
+
+# Якщо є проект OFCRM-1 з профілями:
+mkdir -p docker_octo/cache
+cp -r ~/OFCRM-1/docker_octo/cache/* ./docker_octo/cache/
+
+# Перезапустіть Octo контейнер
+docker-compose restart octo
+```
+
+### Налаштування профілів в Cloud
+
+1. Відкрийте https://app.octobrowser.net/
 2. Створіть профіль для OnlyFans/Fansly
 3. Додайте тег `parserChat` до профілю
 4. Переконайтеся, що профіль авторизований в OnlyFans/Fansly
+5. Дочекайтеся синхронізації з локальним контейнером
 
 ## API Endpoints
 
