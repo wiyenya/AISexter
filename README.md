@@ -28,7 +28,7 @@ cp .env.example .env
 docker-compose up --build
 ```
 
-Відкрийте браузер: `http://localhost:8000`
+Відкрийте браузер: `http://localhost:8004`
 
 📖 **Детальна документація Docker:** [DOCKER.md](DOCKER.md)
 

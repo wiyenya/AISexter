@@ -8,7 +8,7 @@ services:
     volumes:
       - .:/app
     ports:
-      - "8000:8000"
+      - "8004:8000"
     env_file:
       - .env
     depends_on:
@@ -24,7 +24,7 @@ services:
     container_name: aisexter_octo
     hostname: octo
     ports:
-      - "58888:58888"
+      - "58889:58888"
     volumes:
       - octo_profiles:/home/octo/.config
     networks:
@@ -41,7 +41,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "5436:5432"
     networks:
       - aisexter_network
 

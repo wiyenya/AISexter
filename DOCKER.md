@@ -17,7 +17,7 @@ cp .env.example .env
 docker-compose up --build
 ```
 
-Відкрийте браузер: `http://localhost:8000`
+Відкрийте браузер: `http://localhost:8004`
 
 ### 2. Production режим
 
@@ -84,18 +84,18 @@ docker-compose exec web python manage.py collectstatic --noinput
 ### Сервіси
 
 1. **web** - Django додаток
-   - Порт: 8000
+   - Порт: 8004 (зовнішній) -> 8000 (внутрішній)
    - Playwright з Chromium
    - Підключення до PostgreSQL та Octo Browser
 
 2. **octo** - Octo Browser
-   - Порт: 58888
+   - Порт: 58889 (зовнішній) -> 58888 (внутрішній)
    - Headless режим з Xvfb
    - Volume для профілів браузера
    - Hostname: `octo` (для підключення з web)
 
 3. **postgres** - База даних PostgreSQL
-   - Порт: 5432
+   - Порт: 5436 (зовнішній) -> 5432 (внутрішній)
    - Volume для збереження даних
 
 4. **nginx** (тільки production)
@@ -114,11 +114,11 @@ docker-compose exec web python manage.py collectstatic --noinput
 
 ### Доступ до Octo Browser
 
-Octo Browser запускається в headless режимі і доступний через API на порту 58888:
+Octo Browser запускається в headless режимі і доступний через API на порту 58889:
 
 ```bash
 # Перевірка статусу Octo Browser
-curl http://localhost:58888/api/profiles
+curl http://localhost:58889/api/profiles
 
 # Логи Octo Browser
 docker-compose logs -f octo
