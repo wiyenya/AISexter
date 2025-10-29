@@ -40,9 +40,16 @@ class OctoClient:
         )
 
     def check_auth(self):
-        api_url = f"{self.base_local_url}/api/username"
-        response = requests.get(api_url)
-        return bool(response.ok)
+        # Check cloud API instead of local API
+        api_url = "https://app.octobrowser.net/api/v2/automation/profiles"
+        headers = {"X-Octo-Api-Token": settings.OCTO_API_TOKEN}
+        
+        try:
+            response = requests.get(api_url, headers=headers, timeout=10)
+            return response.ok
+        except Exception as e:
+            print(f"API check failed: {e}")
+            return False
     
     def login(self):
         api_url = f"{self.base_local_url}/api/auth/login"
@@ -71,7 +78,9 @@ class OctoClient:
         if not self.login():
             return False
     
+        # Use local API for starting profile
         api_url = f"{self.base_local_url}/api/profiles/start"
+
         payload = {
             "uuid": uuid,
             "headless": headless,
@@ -79,30 +88,47 @@ class OctoClient:
             "flags": flags
         }
 
-        print("Starting profile...")
-        print(payload)
+        print(f"🚀 Запускаем профиль UUID: {uuid}")
+        print(f"API URL: {api_url}")
+        print(f"Payload: {payload}")
 
         response = requests.post(api_url, json=payload)
+        print(f"Response Status: {response.status_code}")
+        print(f"Response Text: {response.text}")
 
         if response.ok:
-            print("Profile started successfully")
+            print("✅ Профиль успешно запущен")
             resp_data = response.json()
             return resp_data
         else:
-            print("Profile start failed")
+            print("❌ Ошибка запуска профиля")
             try:
                 resp_data = response.json()
             except Exception:
                 resp_data = None
-            print(response.text)
+            print(f"Status: {response.status_code}")
+            print(f"Response: {response.text}")
             if resp_data and resp_data.get('error') == 'Profile is already started':
-                raise OctoProfileAlreadyStartedException(resp_data)
+                print("✅ Профиль уже запущен, получаем информацию о нем...")
+                # Получаем информацию о запущенном профиле
+                running_profiles = self.get_running_profiles()
+                for profile in running_profiles:
+                    if profile.get('uuid') == uuid:
+                        print(f"✅ Найден запущенный профиль: {profile}")
+                        return profile
+                # Если не нашли в запущенных, возвращаем базовую информацию
+                return {"uuid": uuid, "status": "running", "already_started": True}
             else:
                 raise OctoProfileStartException(resp_data)
     
     def stop_profile(self, uuid: str):
+        # Use local API for stopping profile
         api_url = f"{self.base_local_url}/api/profiles/stop"
-        payload = {"uuid": uuid}
+        
+        payload = {
+            "uuid": uuid
+        }
+
         response = requests.post(api_url, json=payload)
         if response.ok:
             print("Profile stopped successfully")
@@ -110,10 +136,9 @@ class OctoClient:
         return False
     
     def force_stop_profile(self, uuid: str):
-        api_url = f"https://app.octobrowser.net/api/v2/automation/profiles/:uuid/force_stop"
+        api_url = f"{self.base_local_url}/api/profiles/force_stop"
         payload = {"uuid": uuid}
-        headers = {"X-Octo-Api-Token": settings.OCTO_API_TOKEN}
-        response = requests.post(api_url, json=payload, headers=headers)
+        response = requests.post(api_url, json=payload)
         if response.ok:
             print("Profile stopped successfully")
             return True
