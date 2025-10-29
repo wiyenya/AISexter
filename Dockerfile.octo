@@ -55,6 +55,16 @@ RUN groupadd -r octo && \
 RUN mkdir -p /etc/sudoers.d && \
     echo 'octo ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/octo && \
     chmod 0440 /etc/sudoers.d/octo
+
+# Create X11 directory with proper permissions
+RUN mkdir -p /tmp/.X11-unix && \
+    chmod 1777 /tmp/.X11-unix && \
+    chown root:root /tmp/.X11-unix
+
+# Create runtime directory
+RUN mkdir -p /tmp/runtime-octo && \
+    chown -R octo:octo /tmp/runtime-octo
+
 #sudo octo
 RUN usermod -a -G sudo octo
 USER octo
@@ -64,9 +74,22 @@ RUN pip install playwright
 # Install Octo browser
 RUN curl -o /home/octo/browser/octo-browser.tar.gz https://binaries.octobrowser.net/releases/installer/OctoBrowser.linux.tar.gz
 # Unzip Octo browser
-RUN tar -xzf /home/octo/browser/octo-browser.tar.gz -C /home/octo/browser
-# Start virtual display and Octo Browser in headless mode
-CMD rm -f /tmp/.X1-lock; Xvfb :1 -ac -screen 0 "1920x1080x24" -nolisten tcp +extension GLX +render -noreset & \
-    sudo chown -R octo:octo /home/octo && \
-    sleep 5 && DISPLAY=:1 OCTO_HEADLESS=1 /home/octo/browser/OctoBrowser.AppImage
+RUN tar -xzf /home/octo/browser/octo-browser.tar.gz -C /home/octo/browser && \
+    chmod +x /home/octo/browser/OctoBrowser.AppImage
+
+# Set environment variables
+ENV DISPLAY=:1
+ENV XDG_RUNTIME_DIR=/tmp/runtime-octo
+
+# Start virtual display and Octo Browser in headless mode with better error handling
+CMD set -e && \
+    echo "🚀 Starting Xvfb..." && \
+    rm -f /tmp/.X1-lock && \
+    Xvfb :1 -ac -screen 0 "1920x1080x24" -nolisten tcp +extension GLX +render -noreset & \
+    XVFB_PID=$! && \
+    echo "✅ Xvfb started with PID $XVFB_PID" && \
+    sleep 3 && \
+    echo "🚀 Starting Octo Browser..." && \
+    OCTO_HEADLESS=1 /home/octo/browser/OctoBrowser.AppImage || \
+    (echo "❌ Octo Browser failed to start" && kill $XVFB_PID && exit 1)
 
