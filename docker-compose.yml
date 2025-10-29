@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   web:
     build: .
@@ -28,16 +26,10 @@ services:
       - "58890:58888"
     volumes:
       - ./docker_octo/cache:/home/octo/.Octo Browser/
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
     networks:
       - aisexter_network
     restart: unless-stopped
     shm_size: '2gb'
-    environment:
-      - DISPLAY=:1
-      - XDG_RUNTIME_DIR=/tmp/runtime-octo
-    stdin_open: true
-    tty: true
 
 networks:
   aisexter_network:

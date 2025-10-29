@@ -55,16 +55,6 @@ RUN groupadd -r octo && \
 RUN mkdir -p /etc/sudoers.d && \
     echo 'octo ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/octo && \
     chmod 0440 /etc/sudoers.d/octo
-
-# Create X11 directory with proper permissions
-RUN mkdir -p /tmp/.X11-unix && \
-    chmod 1777 /tmp/.X11-unix && \
-    chown root:root /tmp/.X11-unix
-
-# Create runtime directory
-RUN mkdir -p /tmp/runtime-octo && \
-    chown -R octo:octo /tmp/runtime-octo
-
 #sudo octo
 RUN usermod -a -G sudo octo
 USER octo
@@ -74,24 +64,13 @@ RUN pip install playwright
 # Install Octo browser
 RUN curl -o /home/octo/browser/octo-browser.tar.gz https://binaries.octobrowser.net/releases/installer/OctoBrowser.linux.tar.gz
 # Unzip Octo browser
-RUN tar -xzf /home/octo/browser/octo-browser.tar.gz -C /home/octo/browser && \
-    chmod +x /home/octo/browser/OctoBrowser.AppImage
+RUN tar -xzf /home/octo/browser/octo-browser.tar.gz -C /home/octo/browser
 
-# Set environment variables
-ENV DISPLAY=:1
-ENV XDG_RUNTIME_DIR=/tmp/runtime-octo
-
-# Copy entrypoint script
-COPY docker-entrypoint.sh /docker-entrypoint.sh
-
-# Switch to root to set permissions on entrypoint
-USER root
-RUN chmod +x /docker-entrypoint.sh && \
-    chown octo:octo /docker-entrypoint.sh
-
-# Switch back to octo user
-USER octo
-
-# Use entrypoint script
-ENTRYPOINT ["/docker-entrypoint.sh"]
+# Create Octo Browser configuration for API
+RUN mkdir -p /home/octo/.Octo\ Browser && \
+    echo '{"api": {"enabled": true, "port": 58888}}' > /home/octo/.Octo\ Browser/config.json
+# Start virtual display and Octo Browser in headless mode with API
+CMD rm -f /tmp/.X1-lock; Xvfb :1 -ac -screen 0 "1920x1080x24" -nolisten tcp +extension GLX +render -noreset & \
+    sudo chown -R octo:octo /home/octo && \
+    sleep 5 && DISPLAY=:1 OCTO_HEADLESS=1 OCTO_API_ENABLED=1 OCTO_API_PORT=58888 /home/octo/browser/OctoBrowser.AppImage
 
