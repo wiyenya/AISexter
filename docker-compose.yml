@@ -22,12 +22,17 @@ services:
       dockerfile: Dockerfile.octo
     container_name: aisexter_octo_new
     hostname: octo
+    security_opt:
+      - seccomp:unconfined
     ports:
-      - "58890:58888"
+      - "127.0.0.1:58890:58888"
     volumes:
+      - .:/data
       - ./docker_octo/cache:/home/octo/.Octo Browser/
     networks:
       - aisexter_network
+    stdin_open: true
+    tty: true
     restart: unless-stopped
     shm_size: '2gb'
 

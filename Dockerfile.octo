@@ -63,11 +63,7 @@ RUN curl -o /home/octo/browser/octo-browser.tar.gz https://binaries.octobrowser.
 # Unzip Octo browser
 RUN tar -xzf /home/octo/browser/octo-browser.tar.gz -C /home/octo/browser
 
-# Create Octo Browser configuration for API
-RUN mkdir -p /home/octo/.Octo\ Browser && \
-    echo '{"api": {"enabled": true, "port": 58888}}' > /home/octo/.Octo\ Browser/config.json
-
-# Start virtual display and Octo Browser in headless mode with API
+# Start virtual display and Octo Browser in headless mode
 CMD rm -f /tmp/.X1-lock; Xvfb :1 -ac -screen 0 "1920x1080x24" -nolisten tcp +extension GLX +render -noreset & \
     sudo chown -R octo:octo /home/octo && \
     sleep 5 && DISPLAY=:1 OCTO_HEADLESS=1 /home/octo/browser/OctoBrowser.AppImage
