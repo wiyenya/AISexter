@@ -89,21 +89,35 @@ def chat_parser_view(request):
         
         try:
             # Запускаем парсер в отдельном потоке
+            import logging
+            import traceback
+            logger = logging.getLogger(__name__)
+            
             def run_parser():
                 try:
+                    logger.info(f"🚀 Starting ChatParser for profile {profile_uuid} and URL {chat_url}")
+                    print(f"🚀 Starting ChatParser for profile {profile_uuid} and URL {chat_url}")
                     parser = ChatParser(profile_uuid, chat_url)
-                    asyncio.run(parser.run())
+                    result = asyncio.run(parser.run())
+                    logger.info(f"✅ Parser finished with result: {result}")
+                    print(f"✅ Parser finished with result: {result}")
                 except Exception as e:
-                    print(f"Parser error: {e}")
+                    logger.error(f"❌ Parser error: {e}", exc_info=True)
+                    print(f"❌ Parser error: {e}")
+                    traceback.print_exc()
             
-            thread = threading.Thread(target=run_parser)
+            thread = threading.Thread(target=run_parser, name=f"ChatParser-{profile_uuid[:8]}")
             thread.daemon = True
             thread.start()
             
-            context['success'] = f'Chat parsing started for {chat_url}. This may take several minutes.'
+            logger.info(f"✅ Thread started: {thread.name}")
+            print(f"✅ Thread started: {thread.name}")
+            
+            context['success'] = f'Chat parsing started for {chat_url}. Check logs: docker-compose logs -f web'
             
         except Exception as e:
             context['error'] = f'Error starting parser: {str(e)}'
+            print(f"Error starting parser thread: {e}")
     
     return render(request, 'parser/chat_parser.html', context)
 
