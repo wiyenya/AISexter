@@ -1,0 +1,183 @@
+{% extends "parser/base.html" %}
+
+{% block title %}Chat Messages - {{ profile.model_name }} - AIsexter{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <div class="max-w-6xl mx-auto">
+        <!-- Header -->
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-3xl font-bold text-gray-900">Chat Messages</h1>
+            <a href="{% url 'chat_parser' %}" class="flex items-center text-blue-600 hover:text-blue-800">
+                <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                </svg>
+                Back to Chat Parser
+            </a>
+        </div>
+        
+        <!-- Chat Info Card -->
+        <div class="bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg shadow-md p-6 mb-6 text-white">
+            <div class="flex justify-between items-start">
+                <div>
+                    <h2 class="text-2xl font-bold mb-2">{{ profile.model_name }}</h2>
+                    <a href="{{ chat_url }}" target="_blank" class="text-blue-100 hover:text-white underline text-sm">
+                        Open Original Chat ↗
+                    </a>
+                </div>
+                <div class="text-right">
+                    <div class="bg-blue-700 bg-opacity-50 rounded-lg px-4 py-2 mb-2">
+                        <div class="text-3xl font-bold">{{ total_messages }}</div>
+                        <div class="text-sm text-blue-100">Total Messages</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Statistics Bar -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="text-sm text-gray-600 mb-1">Model Messages</div>
+                <div class="text-2xl font-bold text-blue-600">{{ model_messages }}</div>
+                <div class="text-xs text-gray-500">
+                    {% if total_messages > 0 %}
+                        {{ model_messages|floatformat:0 }} / {{ total_messages }} ({% widthratio model_messages total_messages 100 %}%)
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="text-sm text-gray-600 mb-1">User Messages</div>
+                <div class="text-2xl font-bold text-green-600">{{ user_messages }}</div>
+                <div class="text-xs text-gray-500">
+                    {% if total_messages > 0 %}
+                        {{ user_messages|floatformat:0 }} / {{ total_messages }} ({% widthratio user_messages total_messages 100 %}%)
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="text-sm text-gray-600 mb-1">First Message</div>
+                <div class="text-lg font-semibold text-gray-800">
+                    {% if first_message_date %}
+                        {{ first_message_date|date:"M d, Y" }}
+                    {% else %}
+                        N/A
+                    {% endif %}
+                </div>
+                <div class="text-xs text-gray-500">
+                    {% if first_message_date %}
+                        {{ first_message_date|date:"H:i" }}
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="text-sm text-gray-600 mb-1">Last Message</div>
+                <div class="text-lg font-semibold text-gray-800">
+                    {% if last_message_date %}
+                        {{ last_message_date|date:"M d, Y" }}
+                    {% else %}
+                        N/A
+                    {% endif %}
+                </div>
+                <div class="text-xs text-gray-500">
+                    {% if last_message_date %}
+                        {{ last_message_date|date:"H:i" }}
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Messages Container -->
+        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <div class="bg-gray-50 px-6 py-3 border-b border-gray-200">
+                <h3 class="text-lg font-semibold text-gray-900">Conversation</h3>
+            </div>
+            
+            <div class="max-h-[600px] overflow-y-auto p-4 space-y-3">
+                {% for message in messages %}
+                <div class="flex {% if message.is_from_model %}justify-end{% else %}justify-start{% endif %}">
+                    <div class="max-w-[70%] {% if message.is_from_model %}bg-blue-500 text-white{% else %}bg-gray-200 text-gray-900{% endif %} rounded-lg px-4 py-3 shadow">
+                        <!-- Message Header -->
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="flex items-center space-x-2">
+                                <span class="font-semibold text-sm">
+                                    {% if message.is_from_model %}
+                                        {{ profile.model_name }}
+                                    {% elif message.from_username %}
+                                        {{ message.from_username }}
+                                    {% else %}
+                                        User {{ message.from_user_id|slice:":8" }}
+                                    {% endif %}
+                                </span>
+                                {% if message.is_from_model %}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-700">
+                                    Model
+                                </span>
+                                {% else %}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-400 text-white">
+                                    User
+                                </span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        <!-- Message Text -->
+                        <div class="{% if message.is_from_model %}text-white{% else %}text-gray-800{% endif %} whitespace-pre-wrap break-words">
+                            {{ message.message_text }}
+                        </div>
+                        
+                        <!-- Message Time -->
+                        <div class="mt-2 text-xs {% if message.is_from_model %}text-blue-100{% else %}text-gray-600{% endif %}">
+                            {% if message.message_date %}
+                                {{ message.message_date|date:"M d, Y H:i" }}
+                            {% else %}
+                                No date
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% empty %}
+                <div class="p-12 text-center text-gray-500">
+                    <svg class="w-16 h-16 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                    </svg>
+                    <p class="text-lg font-medium">No messages found</p>
+                    <p class="text-sm">This chat appears to be empty.</p>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Export/Actions Section -->
+        <div class="mt-6 flex justify-end space-x-4">
+            <button onclick="window.print()" class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500">
+                Print Chat
+            </button>
+            <a href="{{ chat_url }}" target="_blank" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                Open in Browser
+            </a>
+        </div>
+    </div>
+</div>
+
+<style>
+@media print {
+    .max-h-\[600px\] {
+        max-height: none !important;
+    }
+}
+</style>
+
+<script>
+// Auto-scroll to bottom on page load
+document.addEventListener('DOMContentLoaded', function() {
+    const messagesContainer = document.querySelector('.max-h-\\[600px\\]');
+    if (messagesContainer) {
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+});
+</script>
+{% endblock %}
+

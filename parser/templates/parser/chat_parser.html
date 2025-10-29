@@ -1,0 +1,319 @@
+{% extends "parser/base.html" %}
+
+{% block title %}Chat Parser - AIsexter{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <div class="max-w-2xl mx-auto">
+        <h1 class="text-3xl font-bold text-gray-900 mb-8">Chat Parser</h1>
+        
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <form method="post" class="space-y-6">
+                {% csrf_token %}
+                
+                <div>
+                    <label for="profile" class="block text-sm font-medium text-gray-700 mb-2">
+                        Select Profile
+                    </label>
+                    <select name="profile" id="profile" required 
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="">Choose a profile...</option>
+                        {% for profile in profiles %}
+                        <option value="{{ profile.uuid }}">{{ profile.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div>
+                    <label for="chat_url" class="block text-sm font-medium text-gray-700 mb-2">
+                        Chat URL
+                    </label>
+                    <input type="url" name="chat_url" id="chat_url" required
+                           placeholder="https://onlyfans.com/my/chats/chat/123456 or https://fansly.com/messages/123456"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <p class="text-sm text-gray-500 mt-1">
+                        Enter the full URL of the chat you want to parse
+                    </p>
+                </div>
+                
+                <div class="flex justify-end space-x-4">
+                    <button type="button" id="stopBtn" onclick="stopParsing()" 
+                            class="px-6 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500" 
+                            style="display: none;">
+                        Stop Parsing
+                    </button>
+                    <button type="submit" id="startBtn"
+                            class="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        Start Parsing
+                    </button>
+                </div>
+            </form>
+        </div>
+        
+        <!-- Active Parsers Section -->
+        <div class="mt-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold text-gray-900">Active Parsers</h2>
+                <div class="space-x-2">
+                    <button onclick="refreshActiveParsers()" 
+                            class="px-4 py-2 text-blue-600 border border-blue-300 rounded-md hover:bg-blue-50">
+                        Refresh
+                    </button>
+                    <button onclick="stopAllParsers()" 
+                            class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">
+                        Stop All
+                    </button>
+                </div>
+            </div>
+            <div id="activeParsersList" class="bg-white rounded-lg shadow-md overflow-hidden">
+                <div class="p-4 text-center text-gray-500">
+                    Loading active parsers...
+                </div>
+            </div>
+        </div>
+        
+        {% if models_with_chats %}
+        <div class="mt-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">Recent Parsed Chats by Model</h2>
+            <div class="space-y-4">
+                {% for model in models_with_chats %}
+                <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                    <div class="bg-gradient-to-r from-blue-500 to-blue-600 px-6 py-4">
+                        <div class="flex justify-between items-center">
+                            <h3 class="text-lg font-semibold text-white">{{ model.model_name }}</h3>
+                            <div class="flex items-center space-x-4 text-white text-sm">
+                                <span class="bg-blue-700 bg-opacity-50 px-3 py-1 rounded-full">
+                                    {{ model.chats|length }} chat{{ model.chats|length|pluralize }}
+                                </span>
+                                <span class="bg-blue-700 bg-opacity-50 px-3 py-1 rounded-full">
+                                    {{ model.total_messages }} message{{ model.total_messages|pluralize }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Chat URL
+                                    </th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Messages
+                                    </th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Last Message
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                {% for chat in model.chats %}
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 text-sm text-gray-900">
+                                        <div class="flex items-center space-x-3">
+                                            <a href="{% url 'view_chat' chat.profile_id %}?chat_url={{ chat.url|urlencode }}" 
+                                               class="text-blue-600 hover:text-blue-800 hover:underline">
+                                                View Messages
+                                            </a>
+                                            <span class="text-gray-400">|</span>
+                                            <a href="{{ chat.url }}" target="_blank" 
+                                               class="text-gray-600 hover:text-gray-800 text-sm">
+                                                Open Original ↗
+                                            </a>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        {{ chat.message_count }}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        {% if chat.last_message %}
+                                            {{ chat.last_message|date:"M d, Y H:i" }}
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+let currentProfileUuid = null;
+
+function startParsing() {
+    const profileSelect = document.getElementById('profile');
+    const chatUrl = document.getElementById('chat_url');
+    
+    if (!profileSelect.value || !chatUrl.value) {
+        alert('Please select a profile and enter a chat URL');
+        return;
+    }
+    
+    currentProfileUuid = profileSelect.value;
+    
+    // Показываем кнопку остановки, скрываем кнопку запуска
+    document.getElementById('stopBtn').style.display = 'inline-block';
+    document.getElementById('startBtn').style.display = 'none';
+    
+    // Отправляем форму
+    document.querySelector('form').submit();
+}
+
+function stopParsing() {
+    if (!currentProfileUuid) {
+        alert('No active parsing session');
+        return;
+    }
+    
+    // Отправляем запрос на остановку
+    fetch('{% url "stop_chat_parsing" %}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: `profile_uuid=${currentProfileUuid}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            alert('Parsing stopped successfully');
+            // Возвращаем кнопки в исходное состояние
+            document.getElementById('stopBtn').style.display = 'none';
+            document.getElementById('startBtn').style.display = 'inline-block';
+            currentProfileUuid = null;
+        } else {
+            alert('Error stopping parser: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error stopping parser');
+    });
+}
+
+// Перехватываем отправку формы
+document.querySelector('form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    startParsing();
+});
+
+// Функции для управления активными парсерами
+function refreshActiveParsers() {
+    fetch('{% url "get_active_parsers" %}')
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            displayActiveParsers(data.active_parsers);
+        } else {
+            document.getElementById('activeParsersList').innerHTML = 
+                '<div class="p-4 text-center text-red-500">Error loading active parsers</div>';
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        document.getElementById('activeParsersList').innerHTML = 
+            '<div class="p-4 text-center text-red-500">Error loading active parsers</div>';
+    });
+}
+
+function displayActiveParsers(parsers) {
+    const container = document.getElementById('activeParsersList');
+    
+    if (parsers.length === 0) {
+        container.innerHTML = '<div class="p-4 text-center text-gray-500">No active parsers</div>';
+        return;
+    }
+    
+    let html = '<div class="overflow-x-auto"><table class="min-w-full divide-y divide-gray-200">';
+    html += '<thead class="bg-gray-50"><tr>';
+    html += '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Profile</th>';
+    html += '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>';
+    html += '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>';
+    html += '</tr></thead><tbody class="bg-white divide-y divide-gray-200">';
+    
+    parsers.forEach(parser => {
+        html += '<tr>';
+        html += `<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${parser.name}</td>`;
+        html += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${parser.status}</td>`;
+        html += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">`;
+        html += `<button onclick="stopParser('${parser.uuid}')" class="text-red-600 hover:text-red-800">Stop</button>`;
+        html += '</td></tr>';
+    });
+    
+    html += '</tbody></table></div>';
+    container.innerHTML = html;
+}
+
+function stopParser(uuid) {
+    if (confirm('Are you sure you want to stop this parser?')) {
+        fetch('{% url "stop_chat_parsing" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: `profile_uuid=${uuid}`
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                alert('Parser stopped successfully');
+                refreshActiveParsers();
+            } else {
+                alert('Error stopping parser: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error stopping parser');
+        });
+    }
+}
+
+function stopAllParsers() {
+    if (confirm('Are you sure you want to stop ALL active parsers?')) {
+        fetch('{% url "stop_all_parsers" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                alert(`Stopped ${data.stopped_count} parsers`);
+                if (data.errors.length > 0) {
+                    alert('Errors: ' + data.errors.join(', '));
+                }
+                refreshActiveParsers();
+            } else {
+                alert('Error stopping parsers: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error stopping parsers');
+        });
+    }
+}
+
+// Загружаем активные парсеры при загрузке страницы
+document.addEventListener('DOMContentLoaded', function() {
+    refreshActiveParsers();
+    
+    // Обновляем каждые 30 секунд
+    setInterval(refreshActiveParsers, 30000);
+});
+</script>
+{% endblock %}
+

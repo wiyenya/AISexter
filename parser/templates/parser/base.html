@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AIsexter - Chat Parser{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <!-- Navigation -->
+    <nav class="bg-white shadow-sm">
+        <div class="container mx-auto px-4">
+            <div class="flex justify-between items-center py-4">
+                <a href="/" class="text-2xl font-bold text-blue-600">AIsexter</a>
+                <div class="flex items-center space-x-4">
+                    <a href="{% url 'chat_parser' %}" class="text-gray-700 hover:text-blue-600">Chat Parser</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Messages -->
+    {% if messages %}
+    <div class="container mx-auto px-4 mt-4">
+        {% for message in messages %}
+        <div class="{% if message.tags == 'error' %}bg-red-100 border-red-400 text-red-700{% elif message.tags == 'success' %}bg-green-100 border-green-400 text-green-700{% else %}bg-blue-100 border-blue-400 text-blue-700{% endif %} px-4 py-3 rounded relative mb-2" role="alert">
+            <span class="block sm:inline">{{ message }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Alert messages from context -->
+    {% if success %}
+    <div class="container mx-auto px-4 mt-4">
+        <div class="bg-green-100 border-green-400 text-green-700 px-4 py-3 rounded relative mb-2" role="alert">
+            <span class="block sm:inline">{{ success }}</span>
+        </div>
+    </div>
+    {% endif %}
+    
+    {% if error %}
+    <div class="container mx-auto px-4 mt-4">
+        <div class="bg-red-100 border-red-400 text-red-700 px-4 py-3 rounded relative mb-2" role="alert">
+            <span class="block sm:inline">{{ error }}</span>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Main Content -->
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white shadow-sm mt-12">
+        <div class="container mx-auto px-4 py-6 text-center text-gray-600">
+            <p>&copy; 2025 AIsexter - Chat Parser Tool</p>
+        </div>
+    </footer>
+</body>
+</html>
+

@@ -1,0 +1,35 @@
+# Django core
+Django==5.1.4
+asgiref==3.8.1
+sqlparse==0.5.3
+
+# PostgreSQL
+psycopg==3.2.6
+
+# Playwright for browser automation
+playwright==1.49.1
+pyee==12.0.0
+greenlet==3.1.1
+
+# HTTP requests
+requests==2.32.3
+certifi==2024.12.14
+charset-normalizer==3.4.1
+idna==3.10
+urllib3==2.3.0
+
+# Date/time handling
+python-dateutil==2.9.0.post0
+pytz==2024.2
+tzdata==2024.2
+
+# Async support
+typing_extensions==4.12.2
+
+# CLI and utilities
+click==8.1.8
+colorama==0.4.6
+
+# Optional: ClickHouse support
+clickhouse-connect==0.7.19
+
