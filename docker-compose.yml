@@ -12,10 +12,11 @@ services:
     env_file:
       - .env
     depends_on:
-      - postgres
       - octo
     networks:
       - aisexter_network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   octo:
     build:
@@ -31,22 +32,7 @@ services:
       - aisexter_network
     restart: unless-stopped
 
-  postgres:
-    image: postgres:15-alpine
-    container_name: aisexter_postgres
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-aisexter}
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5436:5432"
-    networks:
-      - aisexter_network
-
 volumes:
-  postgres_data:
   octo_profiles:
 
 networks:

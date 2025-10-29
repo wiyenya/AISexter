@@ -129,7 +129,7 @@ AIsexter/
 
 ### PostgreSQL
 
-Проект використовує існуючу PostgreSQL базу даних:
+Проект використовує **існуючу зовнішню PostgreSQL** базу даних:
 
 ```python
 DATABASES = {
@@ -143,6 +143,8 @@ DATABASES = {
     }
 }
 ```
+
+**Важливо:** База даних НЕ створюється в Docker контейнері. Таблиці `parser_profile` та `parser_chatmessage` вже існують в базі даних основного проекту OFCRM-1.
 
 ### ClickHouse (опціонально)
 

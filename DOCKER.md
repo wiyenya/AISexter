@@ -86,7 +86,8 @@ docker-compose exec web python manage.py collectstatic --noinput
 1. **web** - Django додаток
    - Порт: 8004 (зовнішній) -> 8000 (внутрішній)
    - Playwright з Chromium
-   - Підключення до PostgreSQL та Octo Browser
+   - Підключення до зовнішньої PostgreSQL (164.92.206.141:8080)
+   - Підключення до Octo Browser
 
 2. **octo** - Octo Browser
    - Порт: 58889 (зовнішній) -> 58888 (внутрішній)
@@ -94,21 +95,29 @@ docker-compose exec web python manage.py collectstatic --noinput
    - Volume для профілів браузера
    - Hostname: `octo` (для підключення з web)
 
-3. **postgres** - База даних PostgreSQL
-   - Порт: 5436 (зовнішній) -> 5432 (внутрішній)
-   - Volume для збереження даних
-
-4. **nginx** (тільки production)
+3. **nginx** (тільки production)
    - Порт: 80, 443
    - Reverse proxy для Django
    - Статичні файли
 
 ### Volumes
 
-- `postgres_data` - дані PostgreSQL
 - `octo_profiles` - профілі Octo Browser
 - `static_volume` - статичні файли (production)
 - `media_volume` - медіа файли (production)
+
+## База даних
+
+**Важливо:** Проект використовує **зовнішню PostgreSQL базу даних**, яка вже існує:
+
+```
+Host: 164.92.206.141
+Port: 8080
+Database: postgres
+User: postgres
+```
+
+PostgreSQL **НЕ** запускається в Docker контейнері. Підключення налаштовується через змінні середовища в `.env` файлі.
 
 ## Робота з Octo Browser
 
@@ -170,19 +179,19 @@ docker run -it --rm \
 
 Оновіть `nginx.conf` для HTTPS.
 
-## Підключення до зовнішньої БД
+## Конфігурація бази даних
 
-Якщо використовуєте зовнішню PostgreSQL (як у проекті):
+Проект використовує зовнішню PostgreSQL. Налаштуйте підключення в `.env`:
 
-```yaml
-# docker-compose.yml - видаліть postgres сервіс
-services:
-  web:
-    # ... інші налаштування
-    environment:
-      POSTGRES_HOST: 164.92.206.141
-      POSTGRES_PORT: 8080
+```bash
+POSTGRES_HOST=164.92.206.141
+POSTGRES_PORT=8080
+POSTGRES_DB=postgres
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=your_password
 ```
+
+База даних вже має таблиці `parser_profile` та `parser_chatmessage` з основного проекту OFCRM-1.
 
 ## Troubleshooting
 
