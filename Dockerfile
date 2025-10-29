@@ -1,59 +1,33 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
-# Встановлюємо робочу директорію
+# cd to app directory
 WORKDIR /app
 
-# Встановлюємо системні залежності для Chromium
-RUN apt-get update && apt-get install -y \
-    gcc \
-    postgresql-client \
-    curl \
-    wget \
-    # Залежності для Chromium
-    libnss3 \
-    libnspr4 \
-    libatk1.0-0 \
-    libatk-bridge2.0-0 \
-    libcups2 \
-    libdrm2 \
-    libdbus-1-3 \
-    libxkbcommon0 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxfixes3 \
-    libxrandr2 \
-    libgbm1 \
-    libpango-1.0-0 \
-    libcairo2 \
-    libasound2 \
-    libatspi2.0-0 \
-    libxshmfence1 \
-    fonts-liberation \
-    fonts-noto-color-emoji \
-    libglib2.0-0 \
+# Install extra libraries
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libpq-dev \
+        gcc \
+        build-essential \
+        linux-libc-dev \
+        ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Копіюємо requirements
-COPY requirements.txt .
+# Install dependencies with cache
+COPY requirements.txt /app/
 
-# Встановлюємо Python залежності
-RUN pip install --no-cache-dir -r requirements.txt
+# RUN python -m venv venv && \
+#     ./venv/bin/pip install --upgrade pip && \
+#     ./venv/bin/pip install -r requirements.txt
 
-# Встановлюємо Playwright браузери
-RUN playwright install chromium
+RUN pip install --upgrade pip && \
+    pip install -r requirements.txt
 
-# Копіюємо проект
-COPY . .
+# Setting up virtual environment
+ENV PYTHONUNBUFFERED 1
+# ENV VIRTUAL_ENV=/app/venv
+# ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+# ENV PATH="/app/venv/bin:$PATH"
 
-# Створюємо директорію для статичних файлів
-RUN mkdir -p /app/static
-
-# Збираємо статичні файли
-RUN python manage.py collectstatic --noinput || true
-
-# Відкриваємо порт
-EXPOSE 8000
-
-# Запускаємо сервер
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
-
+# CMD ["celery", "-A", "transaction_parser", "worker", "-l", "INFO"]
+# CMD ["ls", "/app"]
