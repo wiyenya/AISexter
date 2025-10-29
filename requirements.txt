@@ -33,3 +33,6 @@ colorama==0.4.6
 # Optional: ClickHouse support
 clickhouse-connect==0.7.19
 
+# Production server
+gunicorn==21.2.0
+

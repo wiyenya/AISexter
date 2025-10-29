@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    container_name: aisexter_web
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - octo
+    networks:
+      - aisexter_network
+
+  octo:
+    build:
+      context: .
+      dockerfile: Dockerfile.octo
+    container_name: aisexter_octo
+    hostname: octo
+    ports:
+      - "58888:58888"
+    volumes:
+      - octo_profiles:/home/octo/.config
+    networks:
+      - aisexter_network
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: aisexter_postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-aisexter}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - aisexter_network
+
+volumes:
+  postgres_data:
+  octo_profiles:
+
+networks:
+  aisexter_network:
+    driver: bridge
+
