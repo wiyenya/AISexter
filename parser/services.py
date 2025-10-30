@@ -491,8 +491,21 @@ class ChatParser:
     async def navigate(self, page: Page, browser: Browser):
         """Навигация по чату с прокруткой контейнера сообщений"""
         print(f"Navigating to chat: {self.chat_url}")
-        await page.goto(self.chat_url, wait_until="load")
-        await page.wait_for_timeout(5 * 1000)
+        try:
+            # Используем domcontentloaded вместо load для более быстрой загрузки
+            # и добавляем timeout для избежания бесконечного ожидания
+            await page.goto(self.chat_url, wait_until="domcontentloaded", timeout=60000)
+            await page.wait_for_timeout(5 * 1000)
+        except Exception as e:
+            # Если не удалось загрузить, пробуем еще раз с более мягкими параметрами
+            print(f"First navigation attempt failed: {e}, retrying with networkidle...")
+            try:
+                await page.goto(self.chat_url, wait_until="networkidle", timeout=90000)
+                await page.wait_for_timeout(3 * 1000)
+            except Exception as retry_error:
+                print(f"Navigation retry also failed: {retry_error}")
+                # Не поднимаем исключение сразу - возможно страница все же загрузилась частично
+                await page.wait_for_timeout(3 * 1000)
         
         if await self.check_if_login_page(page):
             print("Warning: Login page indicators detected, but continuing...")

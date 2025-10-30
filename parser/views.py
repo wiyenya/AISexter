@@ -132,12 +132,29 @@ def chat_parser_view(request):
                     result = asyncio.run(parser.run())
                     logger.info(f"✅ Parser finished with result: {result}")
                     print(f"✅ Parser finished with result: {result}")
+                    
+                    # Обновляем статус в зависимости от результата
+                    with threads_lock:
+                        if thread_id in active_parsing_threads:
+                            if result and result.get('status') == 'error':
+                                active_parsing_threads[thread_id]['status'] = 'error'
+                                active_parsing_threads[thread_id]['error_message'] = result.get('message', 'Unknown error')
+                            else:
+                                active_parsing_threads[thread_id]['status'] = 'completed'
                 except Exception as e:
                     logger.error(f"❌ Parser error: {e}", exc_info=True)
                     print(f"❌ Parser error: {e}")
                     traceback.print_exc()
+                    # Обновляем статус на error
+                    with threads_lock:
+                        if thread_id in active_parsing_threads:
+                            active_parsing_threads[thread_id]['status'] = 'error'
+                            active_parsing_threads[thread_id]['error_message'] = str(e)
                 finally:
-                    # Удаляем поток из активных после завершения
+                    # Удаляем поток из активных через 30 секунд после завершения
+                    # чтобы пользователь успел увидеть результат
+                    import time
+                    time.sleep(30)
                     with threads_lock:
                         active_parsing_threads.pop(thread_id, None)
             
@@ -212,11 +229,27 @@ def start_chat_parsing(request):
                     }
                 
                 parser = ChatParser(profile_uuid, chat_url)
-                asyncio.run(parser.run())
+                result = asyncio.run(parser.run())
+                
+                # Обновляем статус в зависимости от результата
+                with threads_lock:
+                    if thread_id in active_parsing_threads:
+                        if result and result.get('status') == 'error':
+                            active_parsing_threads[thread_id]['status'] = 'error'
+                            active_parsing_threads[thread_id]['error_message'] = result.get('message', 'Unknown error')
+                        else:
+                            active_parsing_threads[thread_id]['status'] = 'completed'
             except Exception as e:
                 print(f"Parser error: {e}")
+                # Обновляем статус на error
+                with threads_lock:
+                    if thread_id in active_parsing_threads:
+                        active_parsing_threads[thread_id]['status'] = 'error'
+                        active_parsing_threads[thread_id]['error_message'] = str(e)
             finally:
-                # Удаляем поток из активных после завершения
+                # Удаляем поток из активных через 30 секунд после завершения
+                import time
+                time.sleep(30)
                 with threads_lock:
                     active_parsing_threads.pop(thread_id, None)
         
@@ -366,17 +399,33 @@ def get_active_parsers(request):
                 if thread_obj and thread_obj.is_alive():
                     profile_uuid = thread_info['profile_uuid']
                     model_name = model_uuid_to_name.get(profile_uuid, f'Profile {profile_uuid[:8]}')
+                    status = thread_info.get('status', 'running')
                     active_parsers.append({
                         'thread_id': thread_id,
                         'uuid': profile_uuid,
                         'name': model_name,
                         'chat_url': thread_info.get('chat_url', 'Unknown'),
-                        'status': thread_info.get('status', 'running'),
+                        'status': status,
                         'started_at': thread_info.get('started_at', 'Unknown'),
-                        'thread_name': thread_info.get('thread_name', 'Unknown')
+                        'thread_name': thread_info.get('thread_name', 'Unknown'),
+                        'error_message': thread_info.get('error_message', None)
+                    })
+                elif thread_info.get('status') in ('error', 'completed'):
+                    # Поток завершился, но еще не удален (в течение 30 секунд)
+                    profile_uuid = thread_info['profile_uuid']
+                    model_name = model_uuid_to_name.get(profile_uuid, f'Profile {profile_uuid[:8]}')
+                    active_parsers.append({
+                        'thread_id': thread_id,
+                        'uuid': profile_uuid,
+                        'name': model_name,
+                        'chat_url': thread_info.get('chat_url', 'Unknown'),
+                        'status': thread_info.get('status', 'unknown'),
+                        'started_at': thread_info.get('started_at', 'Unknown'),
+                        'thread_name': thread_info.get('thread_name', 'Unknown'),
+                        'error_message': thread_info.get('error_message', None)
                     })
                 else:
-                    # Поток уже не жив, удаляем его
+                    # Поток уже не жив и не в статусе завершения, удаляем его
                     threads_to_remove.append(thread_id)
             
             # Удаляем неактивные потоки
