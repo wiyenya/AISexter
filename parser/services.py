@@ -139,7 +139,9 @@ class OctoClient:
             "Content-Type": "application/json",
         }
         try:
-            response = requests.post(api_url, headers=headers, json={}, timeout=30)
+            # According to API docs, body may include optional version field
+            payload = {"version": None}
+            response = requests.post(api_url, headers=headers, json=payload, timeout=30)
             if not response.ok:
                 return False
             try:
