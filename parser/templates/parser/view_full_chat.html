@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat: {{ model_name }} - {{ user_id }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100">
+    <div class="max-w-4xl mx-auto p-4">
+        <!-- Header -->
+        <div class="bg-white rounded-lg shadow-md mb-4 p-4">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h1 class="text-2xl font-bold text-gray-900">{{ model_name }}</h1>
+                    <p class="text-sm text-gray-600">User ID: {{ user_id }}</p>
+                </div>
+                <a href="{{ chat_url }}" target="_blank" 
+                   class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                    Open on OnlyFans ↗
+                </a>
+            </div>
+        </div>
+
+        <!-- Statistics -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="text-sm text-gray-600 mb-1">Total Messages</div>
+                <div class="text-2xl font-bold text-gray-800">{{ total_messages }}</div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="text-sm text-gray-600 mb-1">Model Messages</div>
+                <div class="text-2xl font-bold text-blue-600">{{ model_messages }}</div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="text-sm text-gray-600 mb-1">User Messages</div>
+                <div class="text-2xl font-bold text-green-600">{{ user_messages }}</div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="text-sm text-gray-600 mb-1">First Message</div>
+                <div class="text-lg font-semibold text-gray-800">
+                    {% if first_message_date %}
+                        {{ first_message_date|date:"M d, Y" }}
+                    {% else %}
+                        N/A
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Chat Messages -->
+        <div class="bg-white rounded-lg shadow-md p-4">
+            <div class="space-y-4" style="max-height: 70vh; overflow-y: auto;">
+                {% for message in messages %}
+                <div class="flex {% if message.is_from_model %}justify-start{% else %}justify-end{% endif %}">
+                    <div class="max-w-xs lg:max-w-md px-4 py-2 rounded-lg {% if message.is_from_model %}bg-gray-200 text-gray-800{% else %}bg-blue-500 text-white{% endif %}">
+                        <div class="text-sm whitespace-pre-wrap">{{ message.message }}</div>
+                        <div class="text-xs mt-1 opacity-75">
+                            {{ message.timestamp|date:"M d, Y H:i" }}
+                            {% if message.is_paid %}
+                                <span class="ml-2">💰 Paid: ${{ message.amount_paid }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% empty %}
+                <div class="text-center text-gray-500 py-8">
+                    No messages found
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Back Button -->
+        <div class="mt-4">
+            <a href="{% url 'chat_parser' %}" 
+               class="inline-block px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700">
+                ← Back to Chat Parser
+            </a>
+        </div>
+    </div>
+</body>
+</html>
+

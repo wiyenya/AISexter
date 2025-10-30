@@ -234,6 +234,61 @@ def view_chat_messages(request, profile_id):
         return render(request, 'parser/chat_parser.html', context)
 
 
+def view_full_chat(request):
+    """Просмотр диалога из FullChatMessage по user_id и model_id"""
+    user_id = request.GET.get('user_id')
+    model_id = request.GET.get('model_id')
+    
+    if not user_id or not model_id:
+        context = {'error': 'user_id and model_id are required'}
+        return render(request, 'parser/chat_parser.html', context)
+    
+    try:
+        # Получаем все сообщения для данного чата
+        messages = FullChatMessage.objects.filter(
+            user_id=user_id,
+            model_id=model_id
+        ).order_by('timestamp')
+        
+        # Получаем информацию о модели
+        try:
+            model_info = ModelInfo.objects.get(model_id=model_id)
+            model_name = model_info.model_name
+        except ModelInfo.DoesNotExist:
+            model_name = f'Model {model_id}'
+        
+        # Статистика
+        total_messages = messages.count()
+        model_messages = messages.filter(is_from_model=True).count()
+        user_messages = messages.filter(is_from_model=False).count()
+        
+        # Первое и последнее сообщение
+        first_message = messages.first()
+        last_message = messages.last()
+        
+        # URL чата
+        chat_url = f"https://onlyfans.com/my/chats/chat/{user_id}/"
+        
+        context = {
+            'user_id': user_id,
+            'model_id': model_id,
+            'model_name': model_name,
+            'messages': messages,
+            'chat_url': chat_url,
+            'total_messages': total_messages,
+            'model_messages': model_messages,
+            'user_messages': user_messages,
+            'first_message_date': first_message.timestamp if first_message else None,
+            'last_message_date': last_message.timestamp if last_message else None,
+        }
+        
+        return render(request, 'parser/view_full_chat.html', context)
+        
+    except Exception as e:
+        context = {'error': f'Error loading chat: {str(e)}'}
+        return render(request, 'parser/chat_parser.html', context)
+
+
 @csrf_exempt
 @require_http_methods(["GET"])
 def get_active_parsers(request):

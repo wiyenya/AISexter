@@ -429,15 +429,52 @@ class ChatParser:
         except Exception as e:
             print(f"Error processing Fansly message: {e}")
     
-    def _parse_date(self, date_str: str):
-        """Парсинг даты из ISO формата"""
-        if not date_str:
+    def _parse_date(self, date_str):
+        """Парсинг даты из ISO формата или времени типа '7:21 pm'"""
+        if not date_str or date_str == "":
             return None
+        
+        # Если это уже datetime объект
+        if isinstance(date_str, datetime.datetime):
+            return date_str
+        
+        # Преобразуем в строку для парсинга
+        date_str = str(date_str).strip()
+        if not date_str or date_str == "":
+            return None
+        
+        # Если это ISO формат
         try:
             return datetime.datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-        except Exception as e:
-            print(f"Error parsing date {date_str}: {e}")
-            return None
+        except (ValueError, AttributeError):
+            pass
+        
+        # Если это время типа "7:21 pm" или "7:24 pm" - парсим вручную
+        try:
+            import re
+            # Паттерн для времени: "7:21 pm" или "12:45 am"
+            time_pattern = r'(\d{1,2}):(\d{2})\s*(am|pm)'
+            match = re.match(time_pattern, date_str.lower())
+            if match:
+                hour = int(match.group(1))
+                minute = int(match.group(2))
+                am_pm = match.group(3)
+                
+                # Преобразуем в 24-часовой формат
+                if am_pm == 'pm' and hour != 12:
+                    hour += 12
+                elif am_pm == 'am' and hour == 12:
+                    hour = 0
+                
+                # Создаем datetime с текущей датой и распарсенным временем
+                now = datetime.datetime.now()
+                return now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        except Exception:
+            pass
+        
+        # Если не получилось - возвращаем None (будет использовано текущее время как fallback)
+        print(f"Warning: Could not parse date '{date_str}', will use current time as fallback")
+        return None
     
     async def navigate(self, page: Page, browser: Browser):
         """Навигация по чату с прокруткой контейнера сообщений"""
@@ -673,10 +710,25 @@ class ChatParser:
                     ).first()
                     
                     if not existing_full:
+                        # Парсим timestamp из message_date или используем текущее время
+                        timestamp = None
+                        if message_data.get('message_date'):
+                            # Если message_date уже datetime объект - используем его
+                            if isinstance(message_data['message_date'], datetime.datetime):
+                                timestamp = message_data['message_date']
+                            else:
+                                # Пытаемся распарсить строку
+                                timestamp = self._parse_date(str(message_data['message_date']))
+                        
+                        # Если не удалось распарсить - используем текущее время
+                        if timestamp is None:
+                            timestamp = datetime.datetime.now()
+                        
                         FullChatMessage.objects.create(
                             user_id=user_id,
                             is_from_model=is_from_model,
                             message=message_data['message_text'],
+                            timestamp=timestamp,
                             is_paid=False,
                             amount_paid=0,
                             model_id=self.model_id
