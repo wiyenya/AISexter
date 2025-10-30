@@ -36,13 +36,18 @@ def chat_parser_view(request):
         profiles = []
     
     # Получаем последние распарсенные чаты из FullChatMessage, сгруппированные по моделям
-    # Группируем по model_id и user_id (user_id = идентификатор чата)
-    all_chats = FullChatMessage.objects.values(
+    # Группируем по model_id и chat_url (chat_url = идентификатор чата)
+    all_chats = FullChatMessage.objects.exclude(
+        chat_url__isnull=True
+    ).exclude(
+        chat_url=''
+    ).values(
         'model_id',
-        'user_id',
+        'chat_url',
     ).annotate(
         message_count=Count('id'),
-        last_message_date=Max('timestamp')
+        last_message_date=Max('timestamp'),
+        user_id=Max('user_id')  # Берем user_id для отображения
     ).order_by('model_id', '-last_message_date')
     
     # Создаем словарь для связи model_id с именами моделей из ModelInfo
@@ -60,14 +65,15 @@ def chat_parser_view(request):
     for chat in all_chats:
         model_id = chat['model_id'] or 'unknown'
         model_name = model_infos_dict.get(model_id, f'Model {model_id}')
+        chat_url = chat['chat_url']
         
         models_with_chats[model_id]['model_name'] = model_name
         models_with_chats[model_id]['model_id'] = model_id
         models_with_chats[model_id]['chats'].append({
-            'user_id': chat['user_id'],
+            'chat_url': chat_url,
+            'user_id': chat['user_id'],  # Для отображения
             'message_count': chat['message_count'],
-            'last_message': chat['last_message_date'],
-            'chat_id': chat['user_id']  # Используем user_id как идентификатор чата
+            'last_message': chat['last_message_date']
         })
         models_with_chats[model_id]['total_messages'] += chat['message_count']
         
@@ -235,27 +241,38 @@ def view_chat_messages(request, profile_id):
 
 
 def view_full_chat(request):
-    """Просмотр диалога из FullChatMessage по user_id и model_id"""
-    user_id = request.GET.get('user_id')
-    model_id = request.GET.get('model_id')
+    """Просмотр диалога из FullChatMessage по chat_url"""
+    chat_url = request.GET.get('chat_url')
     
-    if not user_id or not model_id:
-        context = {'error': 'user_id and model_id are required'}
+    if not chat_url:
+        context = {'error': 'chat_url is required'}
         return render(request, 'parser/chat_parser.html', context)
     
     try:
-        # Получаем все сообщения для данного чата
+        # Получаем все сообщения для данного чата по chat_url
         messages = FullChatMessage.objects.filter(
-            user_id=user_id,
-            model_id=model_id
+            chat_url=chat_url
         ).order_by('timestamp')
         
+        if not messages.exists():
+            context = {'error': f'No messages found for chat: {chat_url}'}
+            return render(request, 'parser/chat_parser.html', context)
+        
+        # Получаем model_id из первого сообщения
+        first_msg = messages.first()
+        model_id = first_msg.model_id if first_msg else None
+        
         # Получаем информацию о модели
-        try:
-            model_info = ModelInfo.objects.get(model_id=model_id)
-            model_name = model_info.model_name
-        except ModelInfo.DoesNotExist:
-            model_name = f'Model {model_id}'
+        model_name = 'Unknown Model'
+        if model_id:
+            try:
+                model_info = ModelInfo.objects.get(model_id=model_id)
+                model_name = model_info.model_name
+            except ModelInfo.DoesNotExist:
+                model_name = f'Model {model_id}'
+        
+        # Получаем user_id из первого сообщения (для отображения)
+        user_id = first_msg.user_id if first_msg else 'unknown'
         
         # Статистика
         total_messages = messages.count()
@@ -265,9 +282,6 @@ def view_full_chat(request):
         # Первое и последнее сообщение
         first_message = messages.first()
         last_message = messages.last()
-        
-        # URL чата
-        chat_url = f"https://onlyfans.com/my/chats/chat/{user_id}/"
         
         context = {
             'user_id': user_id,

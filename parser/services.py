@@ -702,9 +702,9 @@ class ChatParser:
                     # Используем уже вычисленное значение is_from_model из парсинга
                     is_from_model = message_data.get('is_from_model', False)
                     
-                    # Проверяем, не существует ли уже такое сообщение
+                    # Проверяем, не существует ли уже такое сообщение (по chat_url и message)
                     existing_full = FullChatMessage.objects.filter(
-                        user_id=user_id,
+                        chat_url=self.chat_url,
                         message=message_data['message_text'],
                         model_id=self.model_id
                     ).first()
@@ -726,6 +726,7 @@ class ChatParser:
                         
                         FullChatMessage.objects.create(
                             user_id=user_id,
+                            chat_url=self.chat_url,
                             is_from_model=is_from_model,
                             message=message_data['message_text'],
                             timestamp=timestamp,

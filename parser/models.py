@@ -59,6 +59,7 @@ class ModelInfo(models.Model):
 
 class FullChatMessage(models.Model):
     user_id = models.CharField(max_length=64)
+    chat_url = models.URLField(max_length=500, null=True, blank=True)
     is_from_model = models.BooleanField(default=False)
     message = models.TextField()
     timestamp = models.DateTimeField(auto_now_add=True)

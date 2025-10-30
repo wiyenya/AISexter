@@ -54,11 +54,8 @@
                 {% for message in messages %}
                 {# is_from_model=false (фан) -> слева, серые #}
                 {# is_from_model=true (модель) -> справа, синие #}
-                <div class="flex {% if message.is_from_model == True %}justify-end{% else %}justify-start{% endif %}">
-                    <div class="max-w-xs lg:max-w-md px-4 py-2 rounded-lg {% if message.is_from_model == True %}bg-blue-500 text-white{% else %}bg-gray-200 text-gray-800{% endif %}">
-                        <div class="text-xs mb-1 opacity-60">
-                            {% if message.is_from_model == True %}Model ({{ message.is_from_model }}){% else %}Fan ({{ message.is_from_model }}){% endif %}
-                        </div>
+                <div class="flex {% if message.is_from_model %}justify-end{% else %}justify-start{% endif %}">
+                    <div class="max-w-xs lg:max-w-md px-4 py-2 rounded-lg {% if message.is_from_model %}bg-blue-500 text-white{% else %}bg-gray-200 text-gray-800{% endif %}">
                         <div class="text-sm whitespace-pre-wrap">{{ message.message }}</div>
                         <div class="text-xs mt-1 opacity-75">
                             {{ message.timestamp|date:"M d, Y H:i" }}
