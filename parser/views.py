@@ -6,7 +6,7 @@ from django.db.models import Count, Max
 from collections import defaultdict
 import asyncio
 import threading
-from .models import Profile, ChatMessage, ModelInfo
+from .models import Profile, ChatMessage, ModelInfo, FullChatMessage
 from .services import ChatParser, OctoAPIClient, OctoClient
 from django.conf import settings
 
@@ -35,39 +35,46 @@ def chat_parser_view(request):
         print(f"Error getting models from ModelInfo: {e}")
         profiles = []
     
-    # Получаем последние распарсенные чаты, сгруппированные по моделям
-    all_chats = ChatMessage.objects.values(
-        'profile__model_name',
-        'profile_id',
-        'chat_url',
+    # Получаем последние распарсенные чаты из FullChatMessage, сгруппированные по моделям
+    # Группируем по model_id и user_id (user_id = идентификатор чата)
+    all_chats = FullChatMessage.objects.values(
+        'model_id',
+        'user_id',
     ).annotate(
         message_count=Count('id'),
-        last_message_date=Max('message_date')
-    ).order_by('profile__model_name', '-last_message_date')
+        last_message_date=Max('timestamp')
+    ).order_by('model_id', '-last_message_date')
+    
+    # Создаем словарь для связи model_id с именами моделей из ModelInfo
+    model_infos_dict = {m.model_id: m.model_name for m in ModelInfo.objects.all()}
     
     # Группируем чаты по моделям
     models_with_chats = defaultdict(lambda: {
         'model_name': '',
+        'model_id': '',
         'chats': [],
         'total_messages': 0,
         'last_activity': None
     })
     
     for chat in all_chats:
-        profile_name = chat['profile__model_name'] or 'Unknown Profile'
-        models_with_chats[profile_name]['model_name'] = profile_name
-        models_with_chats[profile_name]['chats'].append({
-            'url': chat['chat_url'],
+        model_id = chat['model_id'] or 'unknown'
+        model_name = model_infos_dict.get(model_id, f'Model {model_id}')
+        
+        models_with_chats[model_id]['model_name'] = model_name
+        models_with_chats[model_id]['model_id'] = model_id
+        models_with_chats[model_id]['chats'].append({
+            'user_id': chat['user_id'],
             'message_count': chat['message_count'],
             'last_message': chat['last_message_date'],
-            'profile_id': chat['profile_id']
+            'chat_id': chat['user_id']  # Используем user_id как идентификатор чата
         })
-        models_with_chats[profile_name]['total_messages'] += chat['message_count']
+        models_with_chats[model_id]['total_messages'] += chat['message_count']
         
         # Обновляем последнюю активность
-        if models_with_chats[profile_name]['last_activity'] is None or \
-           (chat['last_message_date'] and chat['last_message_date'] > models_with_chats[profile_name]['last_activity']):
-            models_with_chats[profile_name]['last_activity'] = chat['last_message_date']
+        if models_with_chats[model_id]['last_activity'] is None or \
+           (chat['last_message_date'] and chat['last_message_date'] > models_with_chats[model_id]['last_activity']):
+            models_with_chats[model_id]['last_activity'] = chat['last_message_date']
     
     # Сортируем модели по последней активности
     sorted_models = sorted(

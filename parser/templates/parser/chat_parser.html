@@ -96,7 +96,7 @@
                             <thead class="bg-gray-50">
                                 <tr>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Chat URL
+                                        URL
                                     </th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Messages
@@ -110,17 +110,11 @@
                                 {% for chat in model.chats %}
                                 <tr class="hover:bg-gray-50">
                                     <td class="px-6 py-4 text-sm text-gray-900">
-                                        <div class="flex items-center space-x-3">
-                                            <a href="{% url 'view_chat' chat.profile_id %}?chat_url={{ chat.url|urlencode }}" 
-                                               class="text-blue-600 hover:text-blue-800 hover:underline">
-                                                View Messages
-                                            </a>
-                                            <span class="text-gray-400">|</span>
-                                            <a href="{{ chat.url }}" target="_blank" 
-                                               class="text-gray-600 hover:text-gray-800 text-sm">
-                                                Open Original ↗
-                                            </a>
-                                        </div>
+                                        <a href="https://onlyfans.com/my/chats/chat/{{ chat.user_id }}/" 
+                                           target="_blank" 
+                                           class="text-blue-600 hover:text-blue-800 hover:underline">
+                                            https://onlyfans.com/my/chats/chat/{{ chat.user_id }}/
+                                        </a>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                         {{ chat.message_count }}
