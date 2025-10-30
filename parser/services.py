@@ -430,7 +430,7 @@ class ChatParser:
             print(f"Error processing Fansly message: {e}")
     
     def _parse_date(self, date_str):
-        """Парсинг даты из ISO формата или времени типа '7:21 pm'"""
+        """Парсинг даты из ISO формата или времени типа '7:21 pm' или 'Yesterday 11:05 pm'"""
         if not date_str or date_str == "":
             return None
         
@@ -449,12 +449,19 @@ class ChatParser:
         except (ValueError, AttributeError):
             pass
         
-        # Если это время типа "7:21 pm" или "7:24 pm" - парсим вручную
+        # Обрабатываем форматы с временем типа "7:21 pm" или "Yesterday 11:05 pm"
         try:
             import re
-            # Паттерн для времени: "7:21 pm" или "12:45 am"
+            from datetime import timedelta
+            
+            date_str_lower = date_str.lower()
+            
+            # Проверяем наличие "yesterday"
+            is_yesterday = 'yesterday' in date_str_lower
+            
+            # Паттерн для времени: "7:21 pm" или "12:45 am" - ищем в любом месте строки
             time_pattern = r'(\d{1,2}):(\d{2})\s*(am|pm)'
-            match = re.match(time_pattern, date_str.lower())
+            match = re.search(time_pattern, date_str_lower)
             if match:
                 hour = int(match.group(1))
                 minute = int(match.group(2))
@@ -468,12 +475,17 @@ class ChatParser:
                 
                 # Создаем datetime с текущей датой и распарсенным временем
                 now = datetime.datetime.now()
-                return now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                result = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                
+                # Если было "Yesterday", вычитаем один день
+                if is_yesterday:
+                    result = result - timedelta(days=1)
+                
+                return result
         except Exception:
             pass
         
         # Если не получилось - возвращаем None (будет использовано текущее время как fallback)
-        print(f"Warning: Could not parse date '{date_str}', will use current time as fallback")
         return None
     
     async def navigate(self, page: Page, browser: Browser):
