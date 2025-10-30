@@ -78,6 +78,13 @@ class OctoClient:
         if not self.login():
             return False
     
+        # Всегда делаем force_stop перед запуском для гарантии чистого старта
+        print(f"🛑 Force stopping profile {uuid} before starting...")
+        self.force_stop_profile(uuid)
+        
+        import time
+        time.sleep(2)  # Ждем 2 секунды после остановки
+        
         # Use local API for starting profile
         api_url = f"{self.base_local_url}/api/profiles/start"
 
@@ -108,18 +115,7 @@ class OctoClient:
                 resp_data = None
             print(f"Status: {response.status_code}")
             print(f"Response: {response.text}")
-            if resp_data and resp_data.get('error') == 'Profile is already started':
-                print("✅ Профиль уже запущен, получаем информацию о нем...")
-                # Получаем информацию о запущенном профиле
-                running_profiles = self.get_running_profiles()
-                for profile in running_profiles:
-                    if profile.get('uuid') == uuid:
-                        print(f"✅ Найден запущенный профиль: {profile}")
-                        return profile
-                # Если не нашли в запущенных, возвращаем базовую информацию
-                return {"uuid": uuid, "status": "running", "already_started": True}
-            else:
-                raise OctoProfileStartException(resp_data)
+            raise OctoProfileStartException(resp_data or "Failed to start profile")
     
     def stop_profile(self, uuid: str):
         # Use local API for stopping profile
@@ -153,6 +149,18 @@ class OctoClient:
             running = [p for p in data if p.get('status') == 'running']
             return running
         return []
+    
+    def get_profile_info(self, uuid: str):
+        """Получить полную информацию о профиле (включая ws_endpoint если запущен)"""
+        api_url = f"{self.base_local_url}/api/profiles"
+        response = requests.get(api_url)
+        
+        if response.ok:
+            data = response.json()
+            for profile in data:
+                if profile.get('uuid') == uuid and profile.get('status') == 'running':
+                    return profile
+        return None
 
     def force_stop_all_profiles(self):
         running_profiles = self.get_running_profiles()
