@@ -302,7 +302,18 @@ class ChatParser:
         if not response_data:
             return {'status': 'error', 'message': 'Failed to start profile'}
 
-        ws_endpoint = response_data['ws_endpoint'].replace('127.0.0.1', 'octo')
+        # Исправляем ws_endpoint: заменяем 127.0.0.1 на правильный хост
+        ws_endpoint = response_data.get('ws_endpoint', '')
+        if not ws_endpoint:
+            return {'status': 'error', 'message': 'No ws_endpoint in response'}
+        
+        # Заменяем 127.0.0.1 на хост из настроек OctoClient
+        octo_host = self.octo.host
+        ws_endpoint = ws_endpoint.replace('127.0.0.1', octo_host).replace('localhost', octo_host)
+        
+        # Ждем немного, чтобы WebSocket был готов к подключению
+        import asyncio
+        await asyncio.sleep(2)
         
         parsing_successful = False
         try:
@@ -640,23 +651,55 @@ class ChatParser:
         async with async_playwright() as p:
             page = None
             browser = None
+            max_retries = 3
+            retry_delay = 3
+            
             try:
-                browser = await p.chromium.connect_over_cdp(ws_endpoint)
-                context = browser.contexts[0]
-                page = await context.new_page()
-                
-                page.on("response", lambda response: asyncio.create_task(self.handle_response(response)))
-                
-                await self.navigate(page, browser)
-                
-            except Exception as e:
-                print(f"Error during parsing: {e}")
-                raise
+                for attempt in range(max_retries):
+                    try:
+                        print(f"Connecting to WebSocket (attempt {attempt + 1}/{max_retries}): {ws_endpoint}")
+                        browser = await p.chromium.connect_over_cdp(ws_endpoint, timeout=30000)
+                        context = browser.contexts[0]
+                        page = await context.new_page()
+                        
+                        page.on("response", lambda response: asyncio.create_task(self.handle_response(response)))
+                        
+                        await self.navigate(page, browser)
+                        break  # Успешное подключение и парсинг
+                        
+                    except Exception as e:
+                        print(f"Error during parsing (attempt {attempt + 1}/{max_retries}): {e}")
+                        if page is not None:
+                            try:
+                                await page.close()
+                            except:
+                                pass
+                            page = None
+                        if browser is not None:
+                            try:
+                                await browser.close()
+                            except:
+                                pass
+                            browser = None
+                        
+                        if attempt < max_retries - 1:
+                            print(f"Retrying in {retry_delay} seconds...")
+                            await asyncio.sleep(retry_delay)
+                            retry_delay *= 2  # Увеличиваем задержку с каждой попыткой
+                        else:
+                            # Все попытки исчерпаны
+                            raise
             finally:
                 if page is not None:
-                    await page.close()
+                    try:
+                        await page.close()
+                    except:
+                        pass
                 if browser is not None:
-                    await browser.close()
+                    try:
+                        await browser.close()
+                    except:
+                        pass
                 
                 try:
                     await sync_to_async(self.save_messages)()
