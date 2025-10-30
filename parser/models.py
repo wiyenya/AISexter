@@ -32,3 +32,33 @@ class ChatMessage(models.Model):
     def __str__(self):
         return f"Message from {self.from_username} at {self.message_date}"
 
+
+class ModelInfo(models.Model):
+    model_name = models.TextField()
+    group_id = models.BigIntegerField()
+    model_id = models.CharField(max_length=255)
+    model_octo_profile = models.CharField(max_length=255, blank=True, null=True)
+
+    class Meta:
+        db_table = 'parser_modelinfo'
+    
+    def __str__(self):
+        return f"ModelInfo {self.model_name} (group: {self.group_id})"
+
+
+class FullChatMessage(models.Model):
+    user_id = models.CharField(max_length=64)
+    is_from_model = models.BooleanField(default=False)
+    message = models.TextField()
+    timestamp = models.DateTimeField(auto_now_add=True)
+    is_paid = models.BooleanField(default=False)
+    amount_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    model_id = models.CharField(max_length=255, default='', blank=True)
+
+    class Meta:
+        db_table = 'parser_fullchatmessage'
+        ordering = ['timestamp']
+    
+    def __str__(self):
+        return f"Message from user {self.user_id} at {self.timestamp}"
+

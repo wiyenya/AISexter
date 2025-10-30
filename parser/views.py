@@ -6,32 +6,34 @@ from django.db.models import Count, Max
 from collections import defaultdict
 import asyncio
 import threading
-from .models import Profile, ChatMessage
+from .models import Profile, ChatMessage, ModelInfo
 from .services import ChatParser, OctoAPIClient, OctoClient
 from django.conf import settings
 
 
 def chat_parser_view(request):
     """Веб-интерфейс для парсера чатов"""
-    # Получаем профили из Octo Browser по тегу parserChat
+    # Получаем модели из таблицы ModelInfo
     try:
-        octo_api = OctoAPIClient(settings.OCTO_API_TOKEN)
-        octo_profiles = octo_api.get_chat_parser_profiles()
+        model_infos = ModelInfo.objects.all()
         
-        # Создаем список профилей для выбора
+        # Создаем список моделей для выбора
         profiles = []
-        for octo_profile in octo_profiles:
+        for model_info in model_infos:
+            # Пропускаем модели без UUID профиля OctoBrowser
+            if not model_info.model_octo_profile:
+                continue
+                
             profiles.append({
-                'uuid': octo_profile.get('uuid'),
-                'title': octo_profile.get('title'),
-                'name': octo_profile.get('title', 'Unknown Profile')
+                'uuid': model_info.model_octo_profile,  # UUID из model_octo_profile
+                'title': model_info.model_name,          # Имя модели
+                'name': model_info.model_name,
+                'model_id': model_info.model_id          # ID модели для связи
             })
             
     except Exception as e:
-        print(f"Error getting Octo profiles: {e}")
-        # Fallback на локальные профили
-        profiles = Profile.objects.filter(is_active=True)
-        profiles = [{'uuid': p.uuid, 'title': p.model_name, 'name': p.model_name} for p in profiles]
+        print(f"Error getting models from ModelInfo: {e}")
+        profiles = []
     
     # Получаем последние распарсенные чаты, сгруппированные по моделям
     all_chats = ChatMessage.objects.values(
@@ -233,17 +235,18 @@ def get_active_parsers(request):
         octo = OctoClient.init_from_settings()
         running_profiles = octo.get_running_profiles()
         
-        # Фильтруем только профили с тегом parserChat
-        octo_api = OctoAPIClient(settings.OCTO_API_TOKEN)
-        chat_parser_profiles = octo_api.get_chat_parser_profiles()
-        chat_parser_uuids = [p.get('uuid') for p in chat_parser_profiles]
+        # Получаем UUID профилей из ModelInfo
+        model_infos = ModelInfo.objects.exclude(model_octo_profile__isnull=True).exclude(model_octo_profile='')
+        model_uuid_to_name = {m.model_octo_profile: m.model_name for m in model_infos}
+        chat_parser_uuids = list(model_uuid_to_name.keys())
         
         active_parsers = []
         for profile in running_profiles:
-            if profile.get('uuid') in chat_parser_uuids:
+            profile_uuid = profile.get('uuid')
+            if profile_uuid in chat_parser_uuids:
                 active_parsers.append({
-                    'uuid': profile.get('uuid'),
-                    'name': profile.get('title', 'Unknown'),
+                    'uuid': profile_uuid,
+                    'name': model_uuid_to_name.get(profile_uuid, profile.get('title', 'Unknown')),
                     'status': 'running'
                 })
         
@@ -264,24 +267,27 @@ def stop_all_parsers(request):
         octo = OctoClient.init_from_settings()
         running_profiles = octo.get_running_profiles()
         
-        # Получаем профили с тегом parserChat
-        octo_api = OctoAPIClient(settings.OCTO_API_TOKEN)
-        chat_parser_profiles = octo_api.get_chat_parser_profiles()
-        chat_parser_uuids = [p.get('uuid') for p in chat_parser_profiles]
+        # Получаем UUID профилей из ModelInfo
+        model_infos = ModelInfo.objects.exclude(model_octo_profile__isnull=True).exclude(model_octo_profile='')
+        model_uuid_to_name = {m.model_octo_profile: m.model_name for m in model_infos}
+        chat_parser_uuids = list(model_uuid_to_name.keys())
         
         stopped_count = 0
         errors = []
         
         for profile in running_profiles:
-            if profile.get('uuid') in chat_parser_uuids:
+            profile_uuid = profile.get('uuid')
+            if profile_uuid in chat_parser_uuids:
                 try:
-                    success = octo.stop_profile(profile.get('uuid'))
+                    success = octo.stop_profile(profile_uuid)
                     if success:
                         stopped_count += 1
                     else:
-                        errors.append(f"Failed to stop {profile.get('title', 'Unknown')}")
+                        profile_name = model_uuid_to_name.get(profile_uuid, profile.get('title', 'Unknown'))
+                        errors.append(f"Failed to stop {profile_name}")
                 except Exception as e:
-                    errors.append(f"Error stopping {profile.get('title', 'Unknown')}: {str(e)}")
+                    profile_name = model_uuid_to_name.get(profile_uuid, profile.get('title', 'Unknown'))
+                    errors.append(f"Error stopping {profile_name}: {str(e)}")
         
         return JsonResponse({
             'status': 'success',
