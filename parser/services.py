@@ -142,8 +142,10 @@ class OctoClient:
         print(f"🔑 Token present: {bool(settings.OCTO_API_TOKEN)}")
         
         try:
-            # Try without body first, then with empty dict if that fails
-            response = requests.post(api_url, headers=headers, json={}, timeout=30)
+            # API requires 'version' field - trying with version: 1
+            payload = {"version": 1}
+            print(f"📦 Payload: {payload}")
+            response = requests.post(api_url, headers=headers, json=payload, timeout=30)
             print(f"📡 Force stop response: {response.status_code}")
             
             if response.ok:
