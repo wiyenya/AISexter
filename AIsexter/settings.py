@@ -137,6 +137,8 @@ STATIC_ROOT = BASE_DIR / 'static'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# Custom User Model
+AUTH_USER_MODEL = 'parser.CustomUser'
 
 # Octo Browser settings
 OCTO_EMAIL = os.getenv("OCTO_EMAIL", "")
