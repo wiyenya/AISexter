@@ -132,13 +132,24 @@ class OctoClient:
         return False
     
     def force_stop_profile(self, uuid: str):
-        api_url = f"{self.base_local_url}/api/profiles/force_stop"
-        payload = {"uuid": uuid}
-        response = requests.post(api_url, json=payload)
-        if response.ok:
-            print("Profile stopped successfully")
-            return True
-        return False
+        # Use cloud API force stop to ensure termination even if local API fails
+        api_url = f"https://app.octobrowser.net/api/v2/automation/profiles/{uuid}/force_stop"
+        headers = {
+            "X-Octo-Api-Token": settings.OCTO_API_TOKEN,
+            "Content-Type": "application/json",
+        }
+        try:
+            response = requests.post(api_url, headers=headers, json={}, timeout=30)
+            if not response.ok:
+                return False
+            try:
+                data = response.json()
+                return bool(data.get("success", True))
+            except Exception:
+                return True
+        except Exception as e:
+            print(f"Force stop API error: {e}")
+            return False
 
     def get_running_profiles(self):
         api_url = f"{self.base_local_url}/api/profiles"
