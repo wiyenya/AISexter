@@ -6,7 +6,7 @@ import datetime
 from playwright.async_api import async_playwright, Response, Page, Browser
 from asgiref.sync import sync_to_async
 
-from .models import Profile, ChatMessage
+from .models import Profile, ChatMessage, FullChatMessage, ModelInfo
 from .exceptions import (
     LoginPageException,
     OctoProfileStartException,
@@ -250,6 +250,15 @@ class ChatParser:
         self.octo = OctoClient.init_from_settings()
         self.last_saved_count: int = 0
         self.save_batch_size: int = 100
+        
+        # Получаем model_id из ModelInfo по profile_uuid
+        try:
+            model_info = ModelInfo.objects.filter(model_octo_profile=profile_uuid).first()
+            self.model_id = model_info.model_id if model_info else None
+            print(f"🔍 Found model_id: {self.model_id} for profile {profile_uuid}")
+        except Exception as e:
+            print(f"⚠️ Error getting model_id: {e}")
+            self.model_id = None
     
     async def run(self):
         """Основной метод запуска парсера"""
@@ -620,8 +629,11 @@ class ChatParser:
             return
         
         saved_count = 0
+        saved_full_count = 0
+        
         for message_data in messages_to_save:
             try:
+                # Сохраняем в ChatMessage (старая логика)
                 existing = ChatMessage.objects.filter(
                     profile=profile,
                     chat_url=self.chat_url,
@@ -641,10 +653,37 @@ class ChatParser:
                         is_from_model=message_data['is_from_model']
                     )
                     saved_count += 1
+                
+                # Сохраняем в FullChatMessage (новая логика)
+                if self.model_id:
+                    user_id = message_data.get('from_user_id', '')
+                    # Автоматически определяем is_from_model
+                    is_from_model = (user_id == self.model_id)
+                    
+                    # Проверяем, не существует ли уже такое сообщение
+                    existing_full = FullChatMessage.objects.filter(
+                        user_id=user_id,
+                        message=message_data['message_text'],
+                        model_id=self.model_id
+                    ).first()
+                    
+                    if not existing_full:
+                        FullChatMessage.objects.create(
+                            user_id=user_id,
+                            is_from_model=is_from_model,
+                            message=message_data['message_text'],
+                            is_paid=False,
+                            amount_paid=0,
+                            model_id=self.model_id
+                        )
+                        saved_full_count += 1
+                        
             except Exception as e:
                 print(f"Error saving message: {e}")
         
-        print(f"Saved {saved_count} new messages to database")
+        print(f"Saved {saved_count} new messages to ChatMessage")
+        if self.model_id:
+            print(f"Saved {saved_full_count} new messages to FullChatMessage with model_id: {self.model_id}")
     
     def save_messages(self):
         """Сохранение всех оставшихся сообщений в базу данных"""
