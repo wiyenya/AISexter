@@ -118,13 +118,9 @@ class OctoClient:
             raise OctoProfileStartException(resp_data or "Failed to start profile")
     
     def stop_profile(self, uuid: str):
-        # Use local API for stopping profile
+        # Use local API for stopping profile (as in example)
         api_url = f"{self.base_local_url}/api/profiles/stop"
-        
-        payload = {
-            "uuid": uuid
-        }
-
+        payload = {"uuid": uuid}
         response = requests.post(api_url, json=payload)
         if response.ok:
             print("Profile stopped successfully")
@@ -132,38 +128,14 @@ class OctoClient:
         return False
     
     def force_stop_profile(self, uuid: str):
-        # Use cloud API force stop to ensure termination even if local API fails
-        api_url = f"https://app.octobrowser.net/api/v2/automation/profiles/{uuid}/force_stop"
-        headers = {
-            "X-Octo-Api-Token": settings.OCTO_API_TOKEN,
-            "Content-Type": "application/json",
-        }
-        print(f"🌐 Force stop API call to: {api_url}")
-        print(f"🔑 Token present: {bool(settings.OCTO_API_TOKEN)}")
-        
-        try:
-            # API requires 'version' field - trying with version: 1
-            payload = {"version": 1}
-            print(f"📦 Payload: {payload}")
-            response = requests.post(api_url, headers=headers, json=payload, timeout=30)
-            print(f"📡 Force stop response: {response.status_code}")
-            
-            if response.ok:
-                try:
-                    data = response.json()
-                    success = data.get("success", False)
-                    print(f"✅ Force stop success: {success}, data: {data}")
-                    return success
-                except Exception:
-                    # If no JSON body, assume success
-                    print(f"✅ Force stop succeeded (no JSON response)")
-                    return True
-            else:
-                print(f"❌ Force stop failed: {response.status_code} - {response.text}")
-                return False
-        except Exception as e:
-            print(f"💥 Force stop API error: {e}")
-            return False
+        # Use local API force_stop exactly as in example
+        api_url = f"{self.base_local_url}/api/profiles/force_stop"
+        payload = {"uuid": uuid}
+        response = requests.post(api_url, json=payload)
+        if response.ok:
+            print("Profile stopped successfully")
+            return True
+        return False
 
     def get_running_profiles(self):
         api_url = f"{self.base_local_url}/api/profiles"
