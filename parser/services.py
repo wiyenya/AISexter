@@ -699,8 +699,8 @@ class ChatParser:
                 # Сохраняем в FullChatMessage (новая логика)
                 if self.model_id:
                     user_id = message_data.get('from_user_id', '')
-                    # Автоматически определяем is_from_model
-                    is_from_model = (user_id == self.model_id)
+                    # Используем уже вычисленное значение is_from_model из парсинга
+                    is_from_model = message_data.get('is_from_model', False)
                     
                     # Проверяем, не существует ли уже такое сообщение
                     existing_full = FullChatMessage.objects.filter(
