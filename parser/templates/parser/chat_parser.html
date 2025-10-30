@@ -237,16 +237,23 @@ function displayActiveParsers(parsers) {
     let html = '<div class="overflow-x-auto"><table class="min-w-full divide-y divide-gray-200">';
     html += '<thead class="bg-gray-50"><tr>';
     html += '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Profile</th>';
+    html += '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Chat URL</th>';
+    html += '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Started At</th>';
     html += '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>';
     html += '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>';
     html += '</tr></thead><tbody class="bg-white divide-y divide-gray-200">';
     
     parsers.forEach(parser => {
-        html += '<tr>';
-        html += `<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${parser.name}</td>`;
-        html += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${parser.status}</td>`;
-        html += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">`;
-        html += `<button onclick="stopParser('${parser.uuid}')" class="text-red-600 hover:text-red-800">Stop</button>`;
+        const startedAt = parser.started_at ? new Date(parser.started_at).toLocaleString() : 'Unknown';
+        const chatUrlShort = parser.chat_url ? (parser.chat_url.length > 50 ? parser.chat_url.substring(0, 50) + '...' : parser.chat_url) : 'Unknown';
+        
+        html += '<tr class="hover:bg-gray-50">';
+        html += `<td class="px-6 py-4 text-sm font-medium text-gray-900">${parser.name || 'Unknown'}</td>`;
+        html += `<td class="px-6 py-4 text-sm text-gray-600" title="${parser.chat_url || ''}">${chatUrlShort}</td>`;
+        html += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${startedAt}</td>`;
+        html += `<td class="px-6 py-4 whitespace-nowrap"><span class="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">${parser.status || 'running'}</span></td>`;
+        html += `<td class="px-6 py-4 whitespace-nowrap text-sm">`;
+        html += `<button onclick="stopParser('${parser.uuid}', ${parser.thread_id})" class="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700">Stop</button>`;
         html += '</td></tr>';
     });
     
@@ -254,7 +261,7 @@ function displayActiveParsers(parsers) {
     container.innerHTML = html;
 }
 
-function stopParser(uuid) {
+function stopParser(uuid, threadId) {
     if (confirm('Are you sure you want to stop this parser?')) {
         fetch('{% url "stop_chat_parsing" %}', {
             method: 'POST',
@@ -267,8 +274,9 @@ function stopParser(uuid) {
         .then(response => response.json())
         .then(data => {
             if (data.status === 'success') {
-                alert('Parser stopped successfully');
-                refreshActiveParsers();
+                alert('Parser stop signal sent successfully');
+                // Обновляем список через секунду, чтобы увидеть изменения
+                setTimeout(refreshActiveParsers, 1000);
             } else {
                 alert('Error stopping parser: ' + data.message);
             }
@@ -312,8 +320,8 @@ function stopAllParsers() {
 document.addEventListener('DOMContentLoaded', function() {
     refreshActiveParsers();
     
-    // Обновляем каждые 30 секунд
-    setInterval(refreshActiveParsers, 30000);
+    // Обновляем каждые 5 секунд для более актуальной информации
+    setInterval(refreshActiveParsers, 5000);
 });
 </script>
 {% endblock %}

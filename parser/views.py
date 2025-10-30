@@ -6,9 +6,14 @@ from django.db.models import Count, Max
 from collections import defaultdict
 import asyncio
 import threading
+from datetime import datetime
 from .models import Profile, ChatMessage, ModelInfo, FullChatMessage
 from .services import ChatParser, OctoAPIClient, OctoClient
 from django.conf import settings
+
+# Глобальный словарь для отслеживания активных потоков парсинга
+active_parsing_threads = {}
+threads_lock = threading.Lock()
 
 
 def chat_parser_view(request):
@@ -109,7 +114,18 @@ def chat_parser_view(request):
             logger = logging.getLogger(__name__)
             
             def run_parser():
+                thread_id = threading.current_thread().ident
                 try:
+                    # Регистрируем поток как активный
+                    with threads_lock:
+                        active_parsing_threads[thread_id] = {
+                            'profile_uuid': profile_uuid,
+                            'chat_url': chat_url,
+                            'thread_name': threading.current_thread().name,
+                            'started_at': datetime.now().isoformat(),
+                            'status': 'running'
+                        }
+                    
                     logger.info(f"🚀 Starting ChatParser for profile {profile_uuid} and URL {chat_url}")
                     print(f"🚀 Starting ChatParser for profile {profile_uuid} and URL {chat_url}")
                     parser = ChatParser(profile_uuid, chat_url)
@@ -120,6 +136,10 @@ def chat_parser_view(request):
                     logger.error(f"❌ Parser error: {e}", exc_info=True)
                     print(f"❌ Parser error: {e}")
                     traceback.print_exc()
+                finally:
+                    # Удаляем поток из активных после завершения
+                    with threads_lock:
+                        active_parsing_threads.pop(thread_id, None)
             
             thread = threading.Thread(target=run_parser, name=f"ChatParser-{profile_uuid[:8]}")
             thread.daemon = True
@@ -179,13 +199,28 @@ def start_chat_parsing(request):
         
         # Запускаем парсер в отдельном потоке
         def run_parser():
+            thread_id = threading.current_thread().ident
             try:
+                # Регистрируем поток как активный
+                with threads_lock:
+                    active_parsing_threads[thread_id] = {
+                        'profile_uuid': profile_uuid,
+                        'chat_url': chat_url,
+                        'thread_name': threading.current_thread().name,
+                        'started_at': datetime.now().isoformat(),
+                        'status': 'running'
+                    }
+                
                 parser = ChatParser(profile_uuid, chat_url)
                 asyncio.run(parser.run())
             except Exception as e:
                 print(f"Parser error: {e}")
+            finally:
+                # Удаляем поток из активных после завершения
+                with threads_lock:
+                    active_parsing_threads.pop(thread_id, None)
         
-        thread = threading.Thread(target=run_parser)
+        thread = threading.Thread(target=run_parser, name=f"ChatParser-{profile_uuid[:8]}")
         thread.daemon = True
         thread.start()
         
@@ -309,25 +344,44 @@ def view_full_chat(request):
 @csrf_exempt
 @require_http_methods(["GET"])
 def get_active_parsers(request):
-    """API endpoint для получения активных парсеров"""
+    """API endpoint для получения активных парсеров (потоков парсинга)"""
     try:
-        octo = OctoClient.init_from_settings()
-        running_profiles = octo.get_running_profiles()
-        
-        # Получаем UUID профилей из ModelInfo
+        # Получаем информацию о модели по UUID профиля
         model_infos = ModelInfo.objects.exclude(model_octo_profile__isnull=True).exclude(model_octo_profile='')
         model_uuid_to_name = {m.model_octo_profile: m.model_name for m in model_infos}
-        chat_parser_uuids = list(model_uuid_to_name.keys())
         
+        # Получаем активные потоки парсинга
         active_parsers = []
-        for profile in running_profiles:
-            profile_uuid = profile.get('uuid')
-            if profile_uuid in chat_parser_uuids:
-                active_parsers.append({
-                    'uuid': profile_uuid,
-                    'name': model_uuid_to_name.get(profile_uuid, profile.get('title', 'Unknown')),
-                    'status': 'running'
-                })
+        with threads_lock:
+            # Фильтруем только живые потоки
+            threads_to_remove = []
+            for thread_id, thread_info in active_parsing_threads.items():
+                # Проверяем, жив ли поток
+                thread_obj = None
+                for t in threading.enumerate():
+                    if t.ident == thread_id:
+                        thread_obj = t
+                        break
+                
+                if thread_obj and thread_obj.is_alive():
+                    profile_uuid = thread_info['profile_uuid']
+                    model_name = model_uuid_to_name.get(profile_uuid, f'Profile {profile_uuid[:8]}')
+                    active_parsers.append({
+                        'thread_id': thread_id,
+                        'uuid': profile_uuid,
+                        'name': model_name,
+                        'chat_url': thread_info.get('chat_url', 'Unknown'),
+                        'status': thread_info.get('status', 'running'),
+                        'started_at': thread_info.get('started_at', 'Unknown'),
+                        'thread_name': thread_info.get('thread_name', 'Unknown')
+                    })
+                else:
+                    # Поток уже не жив, удаляем его
+                    threads_to_remove.append(thread_id)
+            
+            # Удаляем неактивные потоки
+            for thread_id in threads_to_remove:
+                active_parsing_threads.pop(thread_id, None)
         
         return JsonResponse({
             'status': 'success',
