@@ -7,6 +7,7 @@ urlpatterns = [
     path('api/stop-chat-parsing/', views.stop_chat_parsing, name='stop_chat_parsing'),
     path('api/get-active-parsers/', views.get_active_parsers, name='get_active_parsers'),
     path('api/stop-all-parsers/', views.stop_all_parsers, name='stop_all_parsers'),
+    path('api/update-chat/', views.update_chat, name='update_chat'),
     path('view-chat/<int:profile_id>/', views.view_chat_messages, name='view_chat'),
     path('view-full-chat/', views.view_full_chat, name='view_full_chat'),
 ]

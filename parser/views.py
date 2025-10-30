@@ -108,6 +108,15 @@ def chat_parser_view(request):
             return render(request, 'parser/chat_parser.html', context)
         
         try:
+            # Проверяем, существует ли уже этот чат в базе данных
+            existing_chat = FullChatMessage.objects.filter(chat_url=chat_url).first()
+            update_only = existing_chat is not None
+            
+            if update_only:
+                print(f"🔄 Chat {chat_url} already exists, using update mode")
+            else:
+                print(f"🆕 New chat {chat_url}, using full parsing mode")
+            
             # Запускаем парсер в отдельном потоке
             import logging
             import traceback
@@ -116,8 +125,8 @@ def chat_parser_view(request):
             def run_parser():
                 thread_id = threading.current_thread().ident
                 try:
-                    # Создаем парсер
-                    parser = ChatParser(profile_uuid, chat_url)
+                    # Создаем парсер в режиме обновления или полного парсинга
+                    parser = ChatParser(profile_uuid, chat_url, update_only=update_only)
                     
                     # Регистрируем поток как активный с ссылкой на парсер
                     with threads_lock:
@@ -389,6 +398,85 @@ def view_full_chat(request):
     except Exception as e:
         context = {'error': f'Error loading chat: {str(e)}'}
         return render(request, 'parser/chat_parser.html', context)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def update_chat(request):
+    """API endpoint для обновления существующего чата (проверка новых сообщений)"""
+    try:
+        chat_url = request.POST.get('chat_url')
+        
+        if not chat_url:
+            return JsonResponse({'status': 'error', 'message': 'Missing chat_url'})
+        
+        # Проверяем, существует ли чат
+        existing_message = FullChatMessage.objects.filter(chat_url=chat_url).first()
+        if not existing_message:
+            return JsonResponse({'status': 'error', 'message': 'Chat not found'})
+        
+        # Получаем model_id и profile_uuid
+        model_id = existing_message.model_id
+        try:
+            model_info = ModelInfo.objects.get(model_id=model_id)
+            profile_uuid = model_info.model_octo_profile
+        except ModelInfo.DoesNotExist:
+            return JsonResponse({'status': 'error', 'message': 'Model info not found'})
+        
+        if not profile_uuid:
+            return JsonResponse({'status': 'error', 'message': 'Model profile UUID not found'})
+        
+        # Запускаем парсер в режиме обновления
+        def run_updater():
+            thread_id = threading.current_thread().ident
+            try:
+                # Создаем парсер в режиме обновления
+                parser = ChatParser(profile_uuid, chat_url, update_only=True)
+                
+                # Регистрируем поток как активный
+                with threads_lock:
+                    active_parsing_threads[thread_id] = {
+                        'profile_uuid': profile_uuid,
+                        'chat_url': chat_url,
+                        'thread_name': threading.current_thread().name,
+                        'started_at': datetime.now().isoformat(),
+                        'status': 'running',
+                        'parser': parser
+                    }
+                
+                result = asyncio.run(parser.run())
+                
+                # Обновляем статус
+                with threads_lock:
+                    if thread_id in active_parsing_threads:
+                        if result and result.get('status') == 'error':
+                            active_parsing_threads[thread_id]['status'] = 'error'
+                            active_parsing_threads[thread_id]['error_message'] = result.get('message', 'Unknown error')
+                        else:
+                            active_parsing_threads[thread_id]['status'] = 'completed'
+            except Exception as e:
+                print(f"Updater error: {e}")
+                with threads_lock:
+                    if thread_id in active_parsing_threads:
+                        active_parsing_threads[thread_id]['status'] = 'error'
+                        active_parsing_threads[thread_id]['error_message'] = str(e)
+            finally:
+                import time
+                time.sleep(30)
+                with threads_lock:
+                    active_parsing_threads.pop(thread_id, None)
+        
+        thread = threading.Thread(target=run_updater, name=f"ChatUpdater-{chat_url[:20]}")
+        thread.daemon = True
+        thread.start()
+        
+        return JsonResponse({
+            'status': 'success',
+            'message': 'Chat update started'
+        })
+        
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
 
 
 @csrf_exempt

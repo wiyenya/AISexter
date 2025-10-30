@@ -7,6 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100">
+    {% csrf_token %}
     <div class="max-w-4xl mx-auto p-4">
         <!-- Header -->
         <div class="bg-white rounded-lg shadow-md mb-4 p-4">
@@ -15,10 +16,20 @@
                     <h1 class="text-2xl font-bold text-gray-900">{{ model_name }}</h1>
                     <p class="text-sm text-gray-600">User ID: {{ user_id }}</p>
                 </div>
-                <a href="{{ chat_url }}" target="_blank" 
-                   class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                    Open on OnlyFans ↗
-                </a>
+                <div class="flex items-center space-x-3">
+                    <button onclick="refreshChat()" 
+                            id="refreshBtn"
+                            class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+                        <svg class="w-5 h-5 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        <span id="refreshText">Refresh Chat</span>
+                    </button>
+                    <a href="{{ chat_url }}" target="_blank" 
+                       class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                        Open on OnlyFans ↗
+                    </a>
+                </div>
             </div>
         </div>
 
@@ -90,6 +101,75 @@
                 container.scrollTop = 0;
             }
         });
+        
+        function refreshChat() {
+            const refreshBtn = document.getElementById('refreshBtn');
+            const refreshText = document.getElementById('refreshText');
+            const chatUrl = '{{ chat_url }}';
+            
+            // Отключаем кнопку и показываем, что идет обновление
+            refreshBtn.disabled = true;
+            refreshBtn.classList.remove('bg-green-600', 'hover:bg-green-700');
+            refreshBtn.classList.add('bg-gray-400', 'cursor-not-allowed');
+            refreshText.textContent = 'Refreshing...';
+            
+            // Отправляем запрос на обновление
+            const formData = new URLSearchParams();
+            formData.append('chat_url', chatUrl);
+            
+            fetch('{% url "update_chat" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    // Показываем уведомление
+                    alert('Chat refresh started! New messages will appear shortly. The page will refresh in 5 seconds...');
+                    
+                    // Перезагружаем страницу через 5 секунд
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 5000);
+                } else {
+                    alert('Error refreshing chat: ' + data.message);
+                    // Возвращаем кнопку в исходное состояние
+                    refreshBtn.disabled = false;
+                    refreshBtn.classList.remove('bg-gray-400', 'cursor-not-allowed');
+                    refreshBtn.classList.add('bg-green-600', 'hover:bg-green-700');
+                    refreshText.textContent = 'Refresh Chat';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error refreshing chat');
+                // Возвращаем кнопку в исходное состояние
+                refreshBtn.disabled = false;
+                refreshBtn.classList.remove('bg-gray-400', 'cursor-not-allowed');
+                refreshBtn.classList.add('bg-green-600', 'hover:bg-green-700');
+                refreshText.textContent = 'Refresh Chat';
+            });
+        }
+        
+        // Функция для получения CSRF токена
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
     </script>
 </body>
 </html>

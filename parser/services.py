@@ -245,7 +245,7 @@ class ChatParser:
     Парсер для полного сбора сообщений из чата OnlyFans или Fansly
     """
     
-    def __init__(self, profile_uuid: str, chat_url: str):
+    def __init__(self, profile_uuid: str, chat_url: str, update_only: bool = False):
         self.profile_uuid = profile_uuid
         self.chat_url = chat_url
         self.messages: list[dict] = []
@@ -256,6 +256,7 @@ class ChatParser:
         self.last_saved_count: int = 0
         self.save_batch_size: int = 100
         self.stop_requested: bool = False  # Флаг для остановки парсинга по запросу
+        self.update_only: bool = update_only  # Режим только обновления (без полной прокрутки)
         
         # Получаем model_id из ModelInfo по profile_uuid
         try:
@@ -268,6 +269,11 @@ class ChatParser:
     
     async def run(self):
         """Основной метод запуска парсера"""
+        # Проверяем флаг остановки перед запуском
+        if self.stop_requested:
+            print("🛑 Stop requested before starting, aborting...")
+            return {'status': 'cancelled', 'message': 'Parser stopped by user'}
+        
         try:
             response_data = self.octo.start_profile(self.profile_uuid)
         except OctoProfileAlreadyStartedException:
@@ -298,10 +304,25 @@ class ChatParser:
         except OctoProfileStartException as e:
             error_message = e.args[0]
             print(f"Profile start error: {error_message}")
+            # Проверяем, не была ли запрошена остановка
+            if self.stop_requested:
+                return {'status': 'cancelled', 'message': 'Parser stopped by user'}
             return {'status': 'error', 'message': 'Failed to start profile'}
 
         if not response_data:
+            # Проверяем флаг остановки
+            if self.stop_requested:
+                return {'status': 'cancelled', 'message': 'Parser stopped by user'}
             return {'status': 'error', 'message': 'Failed to start profile'}
+
+        # Проверяем флаг остановки перед подключением
+        if self.stop_requested:
+            print("🛑 Stop requested before connecting, stopping profile...")
+            try:
+                self.octo.stop_profile(self.profile_uuid)
+            except:
+                pass
+            return {'status': 'cancelled', 'message': 'Parser stopped by user'}
 
         ws_endpoint = response_data['ws_endpoint'].replace('127.0.0.1', 'octo')
         
@@ -311,8 +332,14 @@ class ChatParser:
             parsing_successful = True
         except LoginPageException:
             print("Login page detected - session may have expired")
+            if self.stop_requested:
+                return {'status': 'cancelled', 'message': 'Parser stopped by user'}
             return {'status': 'error', 'message': 'Login page detected'}
         except Exception as e:
+            # Если была запрошена остановка, не считаем это ошибкой
+            if self.stop_requested:
+                print("🛑 Stop requested during parsing")
+                return {'status': 'cancelled', 'message': 'Parser stopped by user'}
             print(f"Error during parsing: {e}")
             return {'status': 'error', 'message': f'Parsing error: {str(e)}'}
         
@@ -524,6 +551,17 @@ class ChatParser:
                 await browser.close()
                 raise LoginPageException()
         
+        # Если это режим обновления - собираем только текущие сообщения без прокрутки
+        if self.update_only:
+            print("🔄 Update mode: collecting current visible messages only")
+            await page.wait_for_timeout(2 * 1000)  # Ждем загрузки текущих сообщений
+            await self._collect_messages_from_dom(page)
+            print(f"Total messages collected: {len(self.messages)}")
+            if len(self.messages) > self.last_saved_count:
+                await self._save_messages_batch()
+            return
+        
+        # Обычный режим полного парсинга с прокруткой
         scroll_attempts = 0
         no_new_content_count = 0
         
