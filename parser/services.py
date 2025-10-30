@@ -255,6 +255,7 @@ class ChatParser:
         self.octo = OctoClient.init_from_settings()
         self.last_saved_count: int = 0
         self.save_batch_size: int = 100
+        self.stop_requested: bool = False  # Флаг для остановки парсинга по запросу
         
         # Получаем model_id из ModelInfo по profile_uuid
         try:
@@ -302,18 +303,7 @@ class ChatParser:
         if not response_data:
             return {'status': 'error', 'message': 'Failed to start profile'}
 
-        # Исправляем ws_endpoint: заменяем 127.0.0.1 на правильный хост
-        ws_endpoint = response_data.get('ws_endpoint', '')
-        if not ws_endpoint:
-            return {'status': 'error', 'message': 'No ws_endpoint in response'}
-        
-        # Заменяем 127.0.0.1 на хост из настроек OctoClient
-        octo_host = self.octo.host
-        ws_endpoint = ws_endpoint.replace('127.0.0.1', octo_host).replace('localhost', octo_host)
-        
-        # Ждем немного, чтобы WebSocket был готов к подключению
-        import asyncio
-        await asyncio.sleep(2)
+        ws_endpoint = response_data['ws_endpoint'].replace('127.0.0.1', 'octo')
         
         parsing_successful = False
         try:
@@ -537,7 +527,7 @@ class ChatParser:
         scroll_attempts = 0
         no_new_content_count = 0
         
-        while True:
+        while not self.stop_requested:
             scroll_attempts += 1
             print(f"Scrolling chat messages... attempt {scroll_attempts} (collected {len(self.messages)} messages so far)")
             
@@ -585,7 +575,10 @@ class ChatParser:
                     if len(self.messages) - self.last_saved_count >= self.save_batch_size:
                         await self._save_messages_batch()
         
-        print(f"Finished scrolling after {scroll_attempts} attempts")
+        if self.stop_requested:
+            print(f"🛑 Parsing stopped by user after {scroll_attempts} attempts")
+        else:
+            print(f"Finished scrolling after {scroll_attempts} attempts")
         
         await self._collect_messages_from_dom(page)
         
@@ -651,55 +644,37 @@ class ChatParser:
         async with async_playwright() as p:
             page = None
             browser = None
-            max_retries = 3
-            retry_delay = 3
-            
             try:
-                for attempt in range(max_retries):
-                    try:
-                        print(f"Connecting to WebSocket (attempt {attempt + 1}/{max_retries}): {ws_endpoint}")
-                        browser = await p.chromium.connect_over_cdp(ws_endpoint, timeout=30000)
-                        context = browser.contexts[0]
-                        page = await context.new_page()
-                        
-                        page.on("response", lambda response: asyncio.create_task(self.handle_response(response)))
-                        
-                        await self.navigate(page, browser)
-                        break  # Успешное подключение и парсинг
-                        
-                    except Exception as e:
-                        print(f"Error during parsing (attempt {attempt + 1}/{max_retries}): {e}")
-                        if page is not None:
-                            try:
-                                await page.close()
-                            except:
-                                pass
-                            page = None
-                        if browser is not None:
-                            try:
-                                await browser.close()
-                            except:
-                                pass
-                            browser = None
-                        
-                        if attempt < max_retries - 1:
-                            print(f"Retrying in {retry_delay} seconds...")
-                            await asyncio.sleep(retry_delay)
-                            retry_delay *= 2  # Увеличиваем задержку с каждой попыткой
-                        else:
-                            # Все попытки исчерпаны
-                            raise
+                # Проверяем флаг остановки перед подключением
+                if self.stop_requested:
+                    print("🛑 Stop requested before connecting, aborting...")
+                    return
+                    
+                browser = await p.chromium.connect_over_cdp(ws_endpoint)
+                context = browser.contexts[0]
+                page = await context.new_page()
+                
+                page.on("response", lambda response: asyncio.create_task(self.handle_response(response)))
+                
+                # Проверяем флаг остановки перед навигацией
+                if self.stop_requested:
+                    print("🛑 Stop requested before navigation, aborting...")
+                    return
+                
+                await self.navigate(page, browser)
+                
+            except Exception as e:
+                # Если была запрошена остановка, не поднимаем исключение
+                if self.stop_requested:
+                    print("🛑 Stop requested, parsing aborted")
+                    return
+                print(f"Error during parsing: {e}")
+                raise
             finally:
                 if page is not None:
-                    try:
-                        await page.close()
-                    except:
-                        pass
+                    await page.close()
                 if browser is not None:
-                    try:
-                        await browser.close()
-                    except:
-                        pass
+                    await browser.close()
                 
                 try:
                     await sync_to_async(self.save_messages)()

@@ -116,19 +116,22 @@ def chat_parser_view(request):
             def run_parser():
                 thread_id = threading.current_thread().ident
                 try:
-                    # Регистрируем поток как активный
+                    # Создаем парсер
+                    parser = ChatParser(profile_uuid, chat_url)
+                    
+                    # Регистрируем поток как активный с ссылкой на парсер
                     with threads_lock:
                         active_parsing_threads[thread_id] = {
                             'profile_uuid': profile_uuid,
                             'chat_url': chat_url,
                             'thread_name': threading.current_thread().name,
                             'started_at': datetime.now().isoformat(),
-                            'status': 'running'
+                            'status': 'running',
+                            'parser': parser  # Сохраняем ссылку на парсер для остановки
                         }
                     
                     logger.info(f"🚀 Starting ChatParser for profile {profile_uuid} and URL {chat_url}")
                     print(f"🚀 Starting ChatParser for profile {profile_uuid} and URL {chat_url}")
-                    parser = ChatParser(profile_uuid, chat_url)
                     result = asyncio.run(parser.run())
                     logger.info(f"✅ Parser finished with result: {result}")
                     print(f"✅ Parser finished with result: {result}")
@@ -184,11 +187,23 @@ def stop_chat_parsing(request):
         if not profile_uuid:
             return JsonResponse({'status': 'error', 'message': 'Missing profile_uuid'})
         
+        # Ищем активный поток парсера для этого профиля и устанавливаем флаг остановки
+        parser_found = False
+        with threads_lock:
+            for thread_id, thread_info in active_parsing_threads.items():
+                if thread_info.get('profile_uuid') == profile_uuid:
+                    parser = thread_info.get('parser')
+                    if parser:
+                        parser.stop_requested = True
+                        parser_found = True
+                        print(f"🛑 Stop signal sent to parser for profile {profile_uuid[:8]}")
+                    break
+        
         # Останавливаем профиль в Octo Browser
         octo = OctoClient.init_from_settings()
         success = octo.stop_profile(profile_uuid)
         
-        if success:
+        if success or parser_found:
             return JsonResponse({
                 'status': 'success', 
                 'message': f'Chat parsing stopped for profile {profile_uuid}'
@@ -218,17 +233,19 @@ def start_chat_parsing(request):
         def run_parser():
             thread_id = threading.current_thread().ident
             try:
-                # Регистрируем поток как активный
+                # Создаем парсер
+                parser = ChatParser(profile_uuid, chat_url)
+                
+                # Регистрируем поток как активный с ссылкой на парсер
                 with threads_lock:
                     active_parsing_threads[thread_id] = {
                         'profile_uuid': profile_uuid,
                         'chat_url': chat_url,
                         'thread_name': threading.current_thread().name,
                         'started_at': datetime.now().isoformat(),
-                        'status': 'running'
+                        'status': 'running',
+                        'parser': parser  # Сохраняем ссылку на парсер для остановки
                     }
-                
-                parser = ChatParser(profile_uuid, chat_url)
                 result = asyncio.run(parser.run())
                 
                 # Обновляем статус в зависимости от результата
