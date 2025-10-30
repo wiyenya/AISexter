@@ -1,4 +1,5 @@
 from django.conf import settings
+import time
 from django.utils import timezone
 import requests
 import asyncio
@@ -124,6 +125,8 @@ class OctoClient:
         response = requests.post(api_url, json=payload)
         if response.ok:
             print("Profile stopped successfully")
+            # Give Octo a moment to release resources
+            time.sleep(5)
             return True
         return False
     
@@ -134,6 +137,8 @@ class OctoClient:
         response = requests.post(api_url, json=payload)
         if response.ok:
             print("Profile stopped successfully")
+            # Give Octo a moment to release resources
+            time.sleep(5)
             return True
         return False
 
