@@ -1176,6 +1176,7 @@ class ChatParserFansly:
         
         # Находим правильный скроллируемый контейнер для Fansly
         # Проверяем несколько возможных контейнеров
+        # Получаем вывод всех console.log из браузера
         scroll_container_info = await page.evaluate("""
             () => {
                 // Пробуем найти скроллируемый контейнер
@@ -1187,15 +1188,21 @@ class ChatParserFansly:
                     '.message-collection'
                 ];
                 
+                const results = [];
+                
                 for (const selector of selectors) {
                     const el = document.querySelector(selector);
                     if (el) {
                         // Проверяем, имеет ли элемент прокрутку
                         const hasScroll = el.scrollHeight > el.clientHeight;
-                        console.log(`Found ${selector}: scrollHeight=${el.scrollHeight}, clientHeight=${el.clientHeight}, hasScroll=${hasScroll}`);
-                        if (hasScroll || selector.includes('container') || selector.includes('wrapper')) {
-                            return { selector: selector, found: true };
+                        const info = `Found ${selector}: scrollHeight=${el.scrollHeight}, clientHeight=${el.clientHeight}, hasScroll=${hasScroll}`;
+                        results.push(info);
+                        // Возвращаем только если реально есть прокрутка
+                        if (hasScroll) {
+                            return { selector: selector, found: true, results: results };
                         }
+                    } else {
+                        results.push(`Not found: ${selector}`);
                     }
                 }
                 
@@ -1205,15 +1212,18 @@ class ChatParserFansly:
                     const style = window.getComputedStyle(el);
                     if ((style.overflow === 'auto' || style.overflow === 'scroll' || style.overflowY === 'auto' || style.overflowY === 'scroll') 
                         && el.scrollHeight > el.clientHeight) {
-                        return { selector: 'custom', element: el, found: true };
+                        return { selector: 'custom', element: el.tagName + '.' + el.className, found: true, results: results };
                     }
                 }
                 
-                return { found: false };
+                return { found: false, results: results };
             }
         """)
         
         print(f"🔍 Scroll container detection: {scroll_container_info}")
+        if scroll_container_info.get('results'):
+            for result in scroll_container_info['results']:
+                print(f"  {result}")
         
         # Делаем первый скролл вверх, чтобы дойти до начала
         await page.evaluate("""
