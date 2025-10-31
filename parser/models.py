@@ -62,7 +62,7 @@ class FullChatMessage(models.Model):
     chat_url = models.URLField(max_length=500, null=True, blank=True)
     is_from_model = models.BooleanField(default=False)
     message = models.TextField()
-    timestamp = models.DateTimeField(auto_now_add=True)
+    timestamp = models.DateTimeField(null=True, blank=True)
     is_paid = models.BooleanField(default=False)
     amount_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     model_id = models.CharField(max_length=255, default='', blank=True)

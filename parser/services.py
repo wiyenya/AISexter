@@ -420,12 +420,30 @@ class ChatParser:
             
             is_from_model = from_user_id == self.model_user_id
             
+            # Проверяем информацию о платном сообщении из API
+            is_paid = False
+            amount_paid = 0
+            
+            # В OnlyFans API может быть информация о цене в разных полях
+            price = message.get('price') or message.get('amount')
+            if price:
+                is_paid = True
+                amount_paid = float(price)
+            
+            # Также проверяем флаги
+            if message.get('isPaid') or message.get('is_paid') or message.get('paid'):
+                is_paid = True
+                if not amount_paid and price:
+                    amount_paid = float(price)
+            
             message_data = {
                 'from_user_id': str(from_user_id) if from_user_id else None,
                 'from_username': from_username,
                 'message_text': message.get('text', ''),
                 'message_date': self._parse_date(message.get('createdAt')),
-                'is_from_model': is_from_model
+                'is_from_model': is_from_model,
+                'is_paid': is_paid,
+                'amount_paid': amount_paid
             }
             
             self.messages.append(message_data)
@@ -443,12 +461,30 @@ class ChatParser:
             
             is_from_model = from_user_id == self.model_user_id
             
+            # Проверяем информацию о платном сообщении из API
+            is_paid = False
+            amount_paid = 0
+            
+            # В Fansly API может быть информация о цене в разных полях
+            price = message.get('price') or message.get('amount')
+            if price:
+                is_paid = True
+                amount_paid = float(price)
+            
+            # Также проверяем флаги
+            if message.get('isPaid') or message.get('is_paid') or message.get('paid'):
+                is_paid = True
+                if not amount_paid and price:
+                    amount_paid = float(price)
+            
             message_data = {
                 'from_user_id': str(from_user_id) if from_user_id else None,
                 'from_username': from_username,
                 'message_text': message.get('text', ''),
                 'message_date': self._parse_date(message.get('createdAt')),
-                'is_from_model': is_from_model
+                'is_from_model': is_from_model,
+                'is_paid': is_paid,
+                'amount_paid': amount_paid
             }
             
             self.messages.append(message_data)
@@ -696,8 +732,74 @@ class ChatParser:
                             const isFromMe = messageEl.classList.contains('m-from-me');
                             const fromUsername = isFromMe ? 'Model' : 'User';
                             
+                            // Ищем время сообщения - может быть в разных местах
+                            let messageTime = '';
                             const timeEl = messageEl.querySelector('.b-chat__message__time span');
-                            const messageTime = timeEl ? timeEl.textContent.trim() : '';
+                            if (timeEl) {
+                                messageTime = timeEl.textContent.trim();
+                            }
+                            
+                            // Ищем информацию о платном сообщении и цене
+                            // Обычно это текст типа "$8.88 not paid yet, 4:57 am" или "$8.88 not paid yet"
+                            let isPaid = false;
+                            let amountPaid = 0;
+                            
+                            // Ищем специальные элементы с информацией о платеже (обычно под текстом сообщения)
+                            // Ищем все элементы внутри messageEl, которые могут содержать информацию о платеже
+                            const allTextNodes = messageEl.innerText || messageEl.textContent || '';
+                            
+                            // Более точный паттерн: ищем "$XX.XX not paid" или "$XX.XX paid" или просто цену в формате "$XX.XX"
+                            // который находится отдельно от основного текста сообщения
+                            const paidMessagePattern = /\\$([\\d,]+(?:\\.\\d{2})?)\\s+(?:not\\s+)?paid/i;
+                            const paidMatch = allTextNodes.match(paidMessagePattern);
+                            
+                            if (paidMatch) {
+                                isPaid = true;
+                                // Извлекаем цену, убирая запятые и символ доллара
+                                const priceStr = paidMatch[1].replace(/,/g, '');
+                                amountPaid = parseFloat(priceStr);
+                                
+                                // Если в тексте есть время, используем его вместо времени из timeEl
+                                // Формат: "$8.88 not paid yet, 4:57 am"
+                                const timePattern = /(\\d{1,2}:?\\d{0,2}\\s*(?:am|pm)|\\d{1,2}:\\d{2})/i;
+                                const timeMatch = allTextNodes.match(timePattern);
+                                if (timeMatch && !messageTime) {
+                                    // Проверяем, что время не является частью основного текста сообщения
+                                    const timeIndex = allTextNodes.indexOf(timeMatch[1]);
+                                    const messageTextIndex = allTextNodes.indexOf(messageText);
+                                    // Если время находится после текста сообщения, используем его
+                                    if (timeIndex > messageTextIndex + messageText.length) {
+                                        messageTime = timeMatch[1].trim();
+                                    }
+                                }
+                            } else {
+                                // Также проверяем паттерн только с ценой "$XX.XX" если он находится отдельно
+                                const priceOnlyPattern = /\\$([\\d,]+(?:\\.\\d{2})?)/;
+                                const priceMatch = allTextNodes.match(priceOnlyPattern);
+                                if (priceMatch) {
+                                    // Проверяем, что цена не является частью основного текста сообщения
+                                    const priceIndex = allTextNodes.indexOf(priceMatch[0]);
+                                    const messageTextIndex = allTextNodes.indexOf(messageText);
+                                    // Если цена находится после текста сообщения или в отдельном блоке
+                                    if (priceIndex > messageTextIndex + messageText.length || 
+                                        !messageText.includes(priceMatch[0])) {
+                                        isPaid = true;
+                                        const priceStr = priceMatch[1].replace(/,/g, '');
+                                        amountPaid = parseFloat(priceStr);
+                                    }
+                                }
+                            }
+                            
+                            // Если время все еще не найдено, ищем в других местах
+                            if (!messageTime) {
+                                // Пробуем найти текст с временем в других селекторах
+                                const allText = messageEl.innerText || messageEl.textContent || '';
+                                const timePattern2 = /(\\d{1,2}:?\\d{0,2}\\s*(?:am|pm)|\\d{1,2}:\\d{2})/i;
+                                const timeMatch2 = allText.match(timePattern2);
+                                if (timeMatch2) {
+                                    messageTime = timeMatch2[1].trim();
+                                }
+                            }
                             
                             const avatarEl = messageEl.querySelector('.g-avatar__placeholder');
                             const fromUserId = avatarEl ? avatarEl.textContent.trim() : '';
@@ -707,7 +809,9 @@ class ChatParser:
                                 from_username: fromUsername,
                                 message_text: messageText,
                                 message_date: messageTime,
-                                is_from_model: isFromMe
+                                is_from_model: isFromMe,
+                                is_paid: isPaid,
+                                amount_paid: amountPaid
                             });
                         } catch (e) {
                             console.error('Error parsing message:', e);
@@ -864,14 +968,18 @@ class ChatParser:
                             print(f"⚠️ Warning: Could not parse message_date '{message_data.get('message_date')}', using current time as fallback")
                             timestamp = datetime.datetime.now()
                         
+                        # Получаем информацию о платном сообщении из message_data
+                        is_paid = message_data.get('is_paid', False)
+                        amount_paid = message_data.get('amount_paid', 0) or 0
+                        
                         FullChatMessage.objects.create(
                             user_id=user_id,
                             chat_url=self.chat_url,
                             is_from_model=is_from_model,
                             message=message_data['message_text'],
                             timestamp=timestamp,
-                            is_paid=False,
-                            amount_paid=0,
+                            is_paid=is_paid,
+                            amount_paid=amount_paid,
                             model_id=self.model_id
                         )
                         saved_full_count += 1
