@@ -343,23 +343,8 @@ class ChatParser:
             print(f"Error during parsing: {e}")
             return {'status': 'error', 'message': f'Parsing error: {str(e)}'}
         
-        if parsing_successful:
-            try:
-                profile, created = await sync_to_async(Profile.objects.get_or_create)(
-                    uuid=self.profile_uuid,
-                    defaults={
-                        'model_name': f'Chat Parser Profile {self.profile_uuid[:8]}',
-                        'is_active': True,
-                        'parsing_interval': 30,
-                    }
-                )
-                profile.last_parsed_at = timezone.now()
-                await sync_to_async(profile.save)()
-            except Exception as e:
-                print(f"Error updating profile: {e}")
-        
         if parsing_successful and len(self.messages) > 0:
-            print(f"Parsing completed. Collected {len(self.messages)} messages. Stopping profile.")
+            print(f"✅ OnlyFans parsing completed. Collected {len(self.messages)} messages. Stopping profile.")
             self.octo.stop_profile(self.profile_uuid)
 
         return {'status': 'ok' if parsing_successful else 'error'}
@@ -841,49 +826,12 @@ class ChatParser:
             print(f"❌ Error saving batch: {e}")
     
     def _save_messages_sync(self, messages_to_save: list[dict]):
-        """Синхронное сохранение списка сообщений"""
-        try:
-            profile, created = Profile.objects.get_or_create(
-                uuid=self.profile_uuid,
-                defaults={
-                    'model_name': f'Chat Parser Profile {self.profile_uuid[:8]}',
-                    'is_active': True,
-                    'parsing_interval': 30,
-                }
-            )
-            if created:
-                print(f"Created new profile for chat parser: {profile.model_name}")
-        except Exception as e:
-            print(f"Error creating profile: {e}")
-            return
-        
-        saved_count = 0
+        """Синхронное сохранение списка сообщений OnlyFans (только в FullChatMessage)"""
         saved_full_count = 0
         
         for message_data in messages_to_save:
             try:
-                # Сохраняем в ChatMessage (старая логика)
-                existing = ChatMessage.objects.filter(
-                    profile=profile,
-                    chat_url=self.chat_url,
-                    message_text=message_data['message_text'],
-                    from_username=message_data['from_username'],
-                    message_date=message_data['message_date']
-                ).first()
-                
-                if not existing:
-                    ChatMessage.objects.create(
-                        profile=profile,
-                        chat_url=self.chat_url,
-                        from_user_id=message_data['from_user_id'],
-                        from_username=message_data['from_username'],
-                        message_text=message_data['message_text'],
-                        message_date=message_data['message_date'],
-                        is_from_model=message_data['is_from_model']
-                    )
-                    saved_count += 1
-                
-                # Сохраняем в FullChatMessage (новая логика)
+                # Сохраняем только в FullChatMessage (без Profile и ChatMessage)
                 if self.model_id:
                     user_id = message_data.get('from_user_id', '')
                     # Определяем is_from_model: сравниваем user_id с model_id из ModelInfo
@@ -932,13 +880,14 @@ class ChatParser:
                             model_id=self.model_id
                         )
                         saved_full_count += 1
+                else:
+                    print(f"⚠️ Warning: model_id not found, skipping message save")
                         
             except Exception as e:
                 print(f"Error saving message: {e}")
         
-        print(f"Saved {saved_count} new messages to ChatMessage")
         if self.model_id:
-            print(f"Saved {saved_full_count} new messages to FullChatMessage with model_id: {self.model_id}")
+            print(f"💾 Saved {saved_full_count} new OnlyFans messages to FullChatMessage with model_id: {self.model_id}")
     
     def save_messages(self):
         """Сохранение всех оставшихся сообщений в базу данных"""
@@ -1049,23 +998,8 @@ class ChatParserFansly:
             print(f"Error during parsing: {e}")
             return {'status': 'error', 'message': f'Parsing error: {str(e)}'}
         
-        if parsing_successful:
-            try:
-                profile, created = await sync_to_async(Profile.objects.get_or_create)(
-                    uuid=self.profile_uuid,
-                    defaults={
-                        'model_name': f'Fansly Chat Parser Profile {self.profile_uuid[:8]}',
-                        'is_active': True,
-                        'parsing_interval': 30,
-                    }
-                )
-                profile.last_parsed_at = timezone.now()
-                await sync_to_async(profile.save)()
-            except Exception as e:
-                print(f"Error updating profile: {e}")
-        
         if parsing_successful and len(self.messages) > 0:
-            print(f"Parsing completed. Collected {len(self.messages)} messages. Stopping profile.")
+            print(f"✅ Fansly parsing completed. Collected {len(self.messages)} messages. Stopping profile.")
             self.octo.stop_profile(self.profile_uuid)
 
         return {'status': 'ok' if parsing_successful else 'error'}
@@ -1438,49 +1372,12 @@ class ChatParserFansly:
             print(f"❌ Error saving Fansly batch: {e}")
     
     def _save_messages_sync(self, messages_to_save: list[dict]):
-        """Синхронное сохранение списка сообщений Fansly"""
-        try:
-            profile, created = Profile.objects.get_or_create(
-                uuid=self.profile_uuid,
-                defaults={
-                    'model_name': f'Fansly Chat Parser Profile {self.profile_uuid[:8]}',
-                    'is_active': True,
-                    'parsing_interval': 30,
-                }
-            )
-            if created:
-                print(f"✨ Created new profile for Fansly chat parser: {profile.model_name}")
-        except Exception as e:
-            print(f"❌ Error creating profile: {e}")
-            return
-        
-        saved_count = 0
+        """Синхронное сохранение списка сообщений Fansly (только в FullChatMessage)"""
         saved_full_count = 0
         
         for message_data in messages_to_save:
             try:
-                # Сохраняем в ChatMessage
-                existing = ChatMessage.objects.filter(
-                    profile=profile,
-                    chat_url=self.chat_url,
-                    message_text=message_data['message_text'],
-                    from_username=message_data['from_username'],
-                    message_date=message_data['message_date']
-                ).first()
-                
-                if not existing:
-                    ChatMessage.objects.create(
-                        profile=profile,
-                        chat_url=self.chat_url,
-                        from_user_id=message_data['from_user_id'],
-                        from_username=message_data['from_username'],
-                        message_text=message_data['message_text'],
-                        message_date=message_data['message_date'],
-                        is_from_model=message_data['is_from_model']
-                    )
-                    saved_count += 1
-                
-                # Сохраняем в FullChatMessage
+                # Сохраняем только в FullChatMessage (без Profile и ChatMessage)
                 if self.model_id:
                     user_id = message_data.get('from_user_id', '')
                     user_id_str = str(user_id).strip() if user_id else ''
@@ -1520,11 +1417,12 @@ class ChatParserFansly:
                             model_id=self.model_id
                         )
                         saved_full_count += 1
+                else:
+                    print(f"⚠️ Warning: model_id not found, skipping message save")
                         
             except Exception as e:
                 print(f"❌ Error saving Fansly message: {e}")
         
-        print(f"💾 Saved {saved_count} new Fansly messages to ChatMessage")
         if self.model_id:
             print(f"💾 Saved {saved_full_count} new Fansly messages to FullChatMessage with model_id: {self.model_id}")
     
