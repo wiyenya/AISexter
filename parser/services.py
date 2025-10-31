@@ -1243,7 +1243,6 @@ class ChatParserFansly:
                             
                             // Определяем, от кого сообщение (my-message = от модели)
                             const isFromModel = messageEl.classList.contains('my-message');
-                            const fromUsername = isFromModel ? 'Model' : 'User';
                             
                             // Ищем timestamp
                             let messageTime = '';
@@ -1272,22 +1271,39 @@ class ChatParserFansly:
                                 }
                             }
                             
-                            // Извлекаем user ID если возможно
+                            // Извлекаем user ID из аватара (находится в родительском контейнере)
                             let fromUserId = '';
-                            const avatarEl = messageEl.querySelector('[class*="avatar"]');
-                            if (avatarEl) {
-                                // Пытаемся найти href или другие атрибуты с ID
-                                const linkEl = avatarEl.querySelector('a[href]');
-                                if (linkEl) {
-                                    const href = linkEl.getAttribute('href');
-                                    // Извлекаем username или ID из href типа "/username"
-                                    fromUserId = href ? href.replace('/', '') : '';
+                            
+                            // Аватар находится на уровень выше, ищем его в родительском контейнере
+                            // Структура: <div class="flex-row"><app-account-avatar><a href="/username"></a></app-account-avatar><div><app-group-message>...</app-group-message></div></div>
+                            const parentContainer = messageEl.parentElement?.parentElement?.parentElement;
+                            if (parentContainer) {
+                                const avatarEl = parentContainer.querySelector('app-account-avatar a[href]');
+                                if (avatarEl) {
+                                    const href = avatarEl.getAttribute('href');
+                                    // Извлекаем username из href типа "/alan_90"
+                                    fromUserId = href ? href.replace('/', '').trim() : '';
                                 }
                             }
                             
+                            // Если не нашли через родителя, пробуем поискать в ближайшем контейнере
+                            if (!fromUserId) {
+                                const closestRow = messageEl.closest('.flex-row');
+                                if (closestRow) {
+                                    const avatarEl = closestRow.querySelector('app-account-avatar a[href]');
+                                    if (avatarEl) {
+                                        const href = avatarEl.getAttribute('href');
+                                        fromUserId = href ? href.replace('/', '').trim() : '';
+                                    }
+                                }
+                            }
+                            
+                            // Используем fromUserId как username, если есть
+                            const finalUsername = isFromModel ? 'Model' : (fromUserId || 'User');
+                            
                             messagesData.push({
                                 from_user_id: fromUserId,
-                                from_username: fromUsername,
+                                from_username: finalUsername,
                                 message_text: messageText,
                                 message_date: messageTime,
                                 is_from_model: isFromModel,
@@ -1309,7 +1325,8 @@ class ChatParserFansly:
                           msg['from_username'] == message_data['from_username'] 
                           for msg in self.messages):
                     self.messages.append(message_data)
-                    print(f"✅ Collected Fansly message from {message_data['from_username']}: {message_data['message_text'][:50]}...")
+                    user_id_info = f"(user_id: {message_data['from_user_id']})" if message_data['from_user_id'] else "(no user_id)"
+                    print(f"✅ Collected Fansly message from {message_data['from_username']} {user_id_info}: {message_data['message_text'][:50]}...")
             
             print(f"📊 Total messages collected from Fansly DOM: {len(messages_data)}")
             
