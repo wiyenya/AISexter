@@ -458,7 +458,7 @@ class ChatParser:
             print(f"Error processing Fansly message: {e}")
     
     def _parse_date(self, date_str):
-        """Парсинг даты из ISO формата или времени типа '7:21 pm' или 'Yesterday 11:05 pm'"""
+        """Парсинг даты из ISO формата или времени типа '7:21 pm', '9 pm', 'Yesterday 11:05 pm' или 'Oct 31, 2025 02:37'"""
         if not date_str or date_str == "":
             return None
         
@@ -477,7 +477,36 @@ class ChatParser:
         except (ValueError, AttributeError):
             pass
         
-        # Обрабатываем форматы с временем типа "7:21 pm" или "Yesterday 11:05 pm"
+        # Обрабатываем форматы с временем типа "Oct 31, 2025 02:37" (24-часовой формат с датой)
+        try:
+            import re
+            from datetime import timedelta
+            
+            # Паттерн для формата "Oct 31, 2025 02:37" или "Oct 31, 2025 14:37"
+            date_time_pattern = r'([A-Za-z]{3})\s+(\d{1,2}),\s+(\d{4})\s+(\d{1,2}):(\d{2})'
+            match = re.search(date_time_pattern, date_str)
+            if match:
+                month_abbr = match.group(1)
+                day = int(match.group(2))
+                year = int(match.group(3))
+                hour = int(match.group(4))
+                minute = int(match.group(5))
+                
+                # Преобразуем сокращенное название месяца в число
+                months = {
+                    'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
+                    'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12
+                }
+                month = months.get(month_abbr.lower()[:3])
+                if month:
+                    try:
+                        return datetime.datetime(year, month, day, hour, minute, 0)
+                    except ValueError:
+                        pass
+        except Exception:
+            pass
+        
+        # Обрабатываем форматы с временем типа "7:21 pm", "9 pm" или "Yesterday 11:05 pm"
         try:
             import re
             from datetime import timedelta
@@ -487,13 +516,37 @@ class ChatParser:
             # Проверяем наличие "yesterday"
             is_yesterday = 'yesterday' in date_str_lower
             
-            # Паттерн для времени: "7:21 pm" или "12:45 am" - ищем в любом месте строки
-            time_pattern = r'(\d{1,2}):(\d{2})\s*(am|pm)'
-            match = re.search(time_pattern, date_str_lower)
+            # Паттерн для времени с минутами: "7:21 pm" или "12:45 am"
+            time_pattern_with_minutes = r'(\d{1,2}):(\d{2})\s*(am|pm)'
+            match = re.search(time_pattern_with_minutes, date_str_lower)
             if match:
                 hour = int(match.group(1))
                 minute = int(match.group(2))
                 am_pm = match.group(3)
+                
+                # Преобразуем в 24-часовой формат
+                if am_pm == 'pm' and hour != 12:
+                    hour += 12
+                elif am_pm == 'am' and hour == 12:
+                    hour = 0
+                
+                # Создаем datetime с текущей датой и распарсенным временем
+                now = datetime.datetime.now()
+                result = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                
+                # Если было "Yesterday", вычитаем один день
+                if is_yesterday:
+                    result = result - timedelta(days=1)
+                
+                return result
+            
+            # Паттерн для времени без минут: "9 pm" или "12 am"
+            time_pattern_without_minutes = r'(\d{1,2})\s*(am|pm)(?:\s|$)'
+            match = re.search(time_pattern_without_minutes, date_str_lower)
+            if match:
+                hour = int(match.group(1))
+                am_pm = match.group(2)
+                minute = 0  # Если минут нет, используем 0
                 
                 # Преобразуем в 24-часовой формат
                 if am_pm == 'pm' and hour != 12:
@@ -796,18 +849,19 @@ class ChatParser:
                     ).first()
                     
                     if not existing_full:
-                        # Парсим timestamp из message_date или используем текущее время
+                        # Парсим timestamp из message_date (время сообщения, а не время парсинга)
                         timestamp = None
                         if message_data.get('message_date'):
                             # Если message_date уже datetime объект - используем его
                             if isinstance(message_data['message_date'], datetime.datetime):
                                 timestamp = message_data['message_date']
                             else:
-                                # Пытаемся распарсить строку
+                                # Пытаемся распарсить строку (может быть "9 pm", "Oct 31, 2025 02:37" и т.д.)
                                 timestamp = self._parse_date(str(message_data['message_date']))
                         
-                        # Если не удалось распарсить - используем текущее время
+                        # Если не удалось распарсить - используем текущее время как fallback
                         if timestamp is None:
+                            print(f"⚠️ Warning: Could not parse message_date '{message_data.get('message_date')}', using current time as fallback")
                             timestamp = datetime.datetime.now()
                         
                         FullChatMessage.objects.create(
