@@ -1176,33 +1176,27 @@ class ChatParserFansly:
         
         # Находим правильный скроллируемый контейнер для Fansly
         # Проверяем несколько возможных контейнеров
-        # Получаем вывод всех console.log из браузера
         scroll_container_info = await page.evaluate("""
             () => {
                 // Пробуем найти скроллируемый контейнер
                 const selectors = [
-                    'app-group-message-container',
                     '.message-content-list',
                     '.message-collection-wrapper',
+                    'app-group-message-container',
                     'app-group-message-collection',
                     '.message-collection'
                 ];
-                
-                const results = [];
                 
                 for (const selector of selectors) {
                     const el = document.querySelector(selector);
                     if (el) {
                         // Проверяем, имеет ли элемент прокрутку
                         const hasScroll = el.scrollHeight > el.clientHeight;
-                        const info = `Found ${selector}: scrollHeight=${el.scrollHeight}, clientHeight=${el.clientHeight}, hasScroll=${hasScroll}`;
-                        results.push(info);
-                        // Возвращаем только если реально есть прокрутка
+                        console.log(`Found ${selector}: scrollHeight=${el.scrollHeight}, clientHeight=${el.clientHeight}, hasScroll=${hasScroll}`);
+                        // Используем ТОЛЬКО контейнеры с реальной прокруткой
                         if (hasScroll) {
-                            return { selector: selector, found: true, results: results };
+                            return { selector: selector, found: true };
                         }
-                    } else {
-                        results.push(`Not found: ${selector}`);
                     }
                 }
                 
@@ -1212,29 +1206,25 @@ class ChatParserFansly:
                     const style = window.getComputedStyle(el);
                     if ((style.overflow === 'auto' || style.overflow === 'scroll' || style.overflowY === 'auto' || style.overflowY === 'scroll') 
                         && el.scrollHeight > el.clientHeight) {
-                        return { selector: 'custom', element: el.tagName + '.' + el.className, found: true, results: results };
+                        return { selector: 'custom', element: el, found: true };
                     }
                 }
                 
-                return { found: false, results: results };
+                return { found: false };
             }
         """)
         
         print(f"🔍 Scroll container detection: {scroll_container_info}")
-        if scroll_container_info.get('results'):
-            for result in scroll_container_info['results']:
-                print(f"  {result}")
         
         # Делаем первый скролл вверх, чтобы дойти до начала
         await page.evaluate("""
             () => {
                 // Пробуем разные контейнеры в порядке приоритета
-                const container = document.querySelector('app-group-message-container') ||
-                                document.querySelector('.message-content-list') ||
+                const container = document.querySelector('.message-content-list') ||
                                 document.querySelector('.message-collection-wrapper') ||
+                                document.querySelector('app-group-message-container') ||
                                 document.querySelector('app-group-message-collection') ||
-                                document.querySelector('.message-collection') ||
-                                document.querySelector('[class*="message"]');
+                                document.querySelector('.message-collection');
                 if (container) {
                     console.log('Scrolling container:', container.tagName, container.className);
                     container.scrollTop = 0;
@@ -1262,12 +1252,11 @@ class ChatParserFansly:
             scroll_info = await page.evaluate("""
                 () => {
                     // Ищем контейнер с прокруткой (в порядке приоритета)
-                    const container = document.querySelector('app-group-message-container') ||
-                                    document.querySelector('.message-content-list') ||
+                    const container = document.querySelector('.message-content-list') ||
                                     document.querySelector('.message-collection-wrapper') ||
+                                    document.querySelector('app-group-message-container') ||
                                     document.querySelector('app-group-message-collection') ||
-                                    document.querySelector('.message-collection') ||
-                                    document.querySelector('[class*="message"]');
+                                    document.querySelector('.message-collection');
                     if (container) {
                         const scrollTopBefore = container.scrollTop;
                         const scrollHeight = container.scrollHeight;
