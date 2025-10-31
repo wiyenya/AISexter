@@ -71,7 +71,7 @@
                         <div class="text-xs mt-1 opacity-75">
                             {{ message.timestamp|date:"M d, Y H:i" }}
                             {% if message.is_paid %}
-                                <span class="ml-2">💰 Paid: ${{ message.amount_paid }}</span>
+                                <span class="ml-2">💰 Платное сообщение за ${{ message.amount_paid }}</span>
                             {% endif %}
                         </div>
                     </div>
@@ -94,11 +94,11 @@
     </div>
     
     <script>
-        // Скроллим вверх при загрузке (самые свежие сообщения сверху)
+        // Скроллим вниз при загрузке (последние сообщения внизу)
         window.addEventListener('DOMContentLoaded', function() {
             const container = document.getElementById('messages-container');
             if (container) {
-                container.scrollTop = 0;
+                container.scrollTop = container.scrollHeight;
             }
         });
         

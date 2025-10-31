@@ -344,16 +344,16 @@ def view_full_chat(request):
     
     try:
         # Получаем все сообщения для данного чата по chat_url
-        # Сортируем по timestamp в обратном порядке (последние сверху)
+        # Сортируем по timestamp (первые сверху, последние внизу)
         messages = FullChatMessage.objects.filter(
             chat_url=chat_url
-        ).order_by('-timestamp')
+        ).order_by('timestamp')
         
         if not messages.exists():
             context = {'error': f'No messages found for chat: {chat_url}'}
             return render(request, 'parser/chat_parser.html', context)
         
-        # Получаем model_id из первого сообщения (теперь это самое последнее по времени)
+        # Получаем model_id из любого сообщения
         first_msg = messages.first()
         model_id = first_msg.model_id if first_msg else None
         
