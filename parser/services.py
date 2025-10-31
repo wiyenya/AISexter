@@ -258,14 +258,16 @@ class ChatParser:
         self.stop_requested: bool = False  # Флаг для остановки парсинга по запросу
         self.update_only: bool = update_only  # Режим только обновления (без полной прокрутки)
         
-        # Получаем model_id из ModelInfo по profile_uuid
+        # Получаем model_id и model_name из ModelInfo по profile_uuid
         try:
             model_info = ModelInfo.objects.filter(model_octo_profile=profile_uuid).first()
             self.model_id = model_info.model_id if model_info else None
-            print(f"🔍 Found model_id: {self.model_id} for profile {profile_uuid}")
+            self.model_name = model_info.model_name if model_info else None
+            print(f"🔍 Found model_id: {self.model_id}, model_name: {self.model_name} for profile {profile_uuid}")
         except Exception as e:
             print(f"⚠️ Error getting model_id: {e}")
             self.model_id = None
+            self.model_name = None
     
     async def run(self):
         """Основной метод запуска парсера"""
@@ -833,14 +835,16 @@ class ChatParser:
             try:
                 # Сохраняем только в FullChatMessage (без Profile и ChatMessage)
                 if self.model_id:
-                    user_id = message_data.get('from_user_id', '')
-                    # Определяем is_from_model: сравниваем user_id с model_id из ModelInfo
-                    # Нормализуем значения: str(user_id).strip() и str(self.model_id).strip()
-                    user_id_str = str(user_id).strip() if user_id else ''
-                    model_id_str = str(self.model_id).strip() if self.model_id else ''
+                    # Определяем is_from_model из данных сообщения (парсили из DOM по классу m-from-me)
+                    is_from_model = message_data.get('is_from_model', False)
                     
-                    # Проверяем, что значения не пустые, и сравниваем
-                    is_from_model = (user_id_str == model_id_str) and (user_id_str != '') and (model_id_str != '')
+                    # Определяем user_id:
+                    # - Если сообщение от модели → используем model_name
+                    # - Если от пользователя → используем from_user_id
+                    if is_from_model:
+                        user_id = self.model_name if self.model_name else 'Model'
+                    else:
+                        user_id = message_data.get('from_user_id', '')
                     
                     # Проверяем, не существует ли уже такое сообщение (по chat_url и message)
                     existing_full = FullChatMessage.objects.filter(
@@ -880,6 +884,10 @@ class ChatParser:
                             model_id=self.model_id
                         )
                         saved_full_count += 1
+                        
+                        # Логирование для отладки
+                        user_type = "model" if is_from_model else "user"
+                        print(f"💾 Saved message from {user_type}: user_id={user_id}")
                 else:
                     print(f"⚠️ Warning: model_id not found, skipping message save")
                         
@@ -918,14 +926,16 @@ class ChatParserFansly:
         self.stop_requested: bool = False
         self.update_only: bool = update_only
         
-        # Получаем model_id из ModelInfo по profile_uuid
+        # Получаем model_id и model_name из ModelInfo по profile_uuid
         try:
             model_info = ModelInfo.objects.filter(model_octo_profile=profile_uuid).first()
             self.model_id = model_info.model_id if model_info else None
-            print(f"🔍 Found model_id: {self.model_id} for profile {profile_uuid}")
+            self.model_name = model_info.model_name if model_info else None
+            print(f"🔍 Found model_id: {self.model_id}, model_name: {self.model_name} for profile {profile_uuid}")
         except Exception as e:
             print(f"⚠️ Error getting model_id: {e}")
             self.model_id = None
+            self.model_name = None
     
     async def run(self):
         """Основной метод запуска парсера Fansly"""
@@ -1396,11 +1406,16 @@ class ChatParserFansly:
             try:
                 # Сохраняем только в FullChatMessage (без Profile и ChatMessage)
                 if self.model_id:
-                    user_id = message_data.get('from_user_id', '')
-                    user_id_str = str(user_id).strip() if user_id else ''
-                    model_id_str = str(self.model_id).strip() if self.model_id else ''
+                    # Определяем is_from_model из данных сообщения (парсили из DOM по классу my-message)
+                    is_from_model = message_data.get('is_from_model', False)
                     
-                    is_from_model = (user_id_str == model_id_str) and (user_id_str != '') and (model_id_str != '')
+                    # Определяем user_id:
+                    # - Если сообщение от модели → используем model_name
+                    # - Если от пользователя → используем from_user_id из href
+                    if is_from_model:
+                        user_id = self.model_name if self.model_name else 'Model'
+                    else:
+                        user_id = message_data.get('from_user_id', '')
                     
                     existing_full = FullChatMessage.objects.filter(
                         chat_url=self.chat_url,
@@ -1434,6 +1449,10 @@ class ChatParserFansly:
                             model_id=self.model_id
                         )
                         saved_full_count += 1
+                        
+                        # Логирование для отладки
+                        user_type = "model" if is_from_model else "user"
+                        print(f"💾 Saved message from {user_type}: user_id={user_id}")
                 else:
                     print(f"⚠️ Warning: model_id not found, skipping message save")
                         
