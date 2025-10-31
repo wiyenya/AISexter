@@ -590,6 +590,17 @@ class ChatParser:
         scroll_attempts = 0
         no_new_content_count = 0
         
+        # Делаем первый скролл вверх, чтобы дойти до начала
+        await page.evaluate("""
+            () => {
+                const messagesContainer = document.querySelector('.b-chat__messages');
+                if (messagesContainer) {
+                    messagesContainer.scrollTop = 0;
+                }
+            }
+        """)
+        await page.wait_for_timeout(3 * 1000)
+        
         while not self.stop_requested:
             scroll_attempts += 1
             print(f"Scrolling chat messages... attempt {scroll_attempts} (collected {len(self.messages)} messages so far)")
@@ -610,7 +621,8 @@ class ChatParser:
                 }
             """)
             
-            await page.wait_for_timeout(3 * 1000)
+            # Увеличиваем таймаут, чтобы загрузились новые сообщения
+            await page.wait_for_timeout(5 * 1000)
             
             messages_after = await page.evaluate("""
                 () => {
@@ -1162,8 +1174,67 @@ class ChatParserFansly:
         scroll_attempts = 0
         no_new_content_count = 0
         
-        # Находим контейнер для прокрутки
-        scroll_container_selector = '.message-collection, app-group-message-collection'
+        # Находим правильный скроллируемый контейнер для Fansly
+        # Проверяем несколько возможных контейнеров
+        scroll_container_info = await page.evaluate("""
+            () => {
+                // Пробуем найти скроллируемый контейнер
+                const selectors = [
+                    'app-group-message-container',
+                    '.message-content-list',
+                    '.message-collection-wrapper',
+                    'app-group-message-collection',
+                    '.message-collection'
+                ];
+                
+                for (const selector of selectors) {
+                    const el = document.querySelector(selector);
+                    if (el) {
+                        // Проверяем, имеет ли элемент прокрутку
+                        const hasScroll = el.scrollHeight > el.clientHeight;
+                        console.log(`Found ${selector}: scrollHeight=${el.scrollHeight}, clientHeight=${el.clientHeight}, hasScroll=${hasScroll}`);
+                        if (hasScroll || selector.includes('container') || selector.includes('wrapper')) {
+                            return { selector: selector, found: true };
+                        }
+                    }
+                }
+                
+                // Если не нашли, пробуем найти любой элемент с overflow
+                const allElements = document.querySelectorAll('*');
+                for (const el of allElements) {
+                    const style = window.getComputedStyle(el);
+                    if ((style.overflow === 'auto' || style.overflow === 'scroll' || style.overflowY === 'auto' || style.overflowY === 'scroll') 
+                        && el.scrollHeight > el.clientHeight) {
+                        return { selector: 'custom', element: el, found: true };
+                    }
+                }
+                
+                return { found: false };
+            }
+        """)
+        
+        print(f"🔍 Scroll container detection: {scroll_container_info}")
+        
+        # Делаем первый скролл вверх, чтобы дойти до начала
+        await page.evaluate("""
+            () => {
+                // Пробуем разные контейнеры в порядке приоритета
+                const container = document.querySelector('app-group-message-container') ||
+                                document.querySelector('.message-content-list') ||
+                                document.querySelector('.message-collection-wrapper') ||
+                                document.querySelector('app-group-message-collection') ||
+                                document.querySelector('.message-collection') ||
+                                document.querySelector('[class*="message"]');
+                if (container) {
+                    console.log('Scrolling container:', container.tagName, container.className);
+                    container.scrollTop = 0;
+                } else {
+                    console.log('No container found, using window scroll');
+                    window.scrollTo(0, 0);
+                }
+            }
+        """)
+        await page.wait_for_timeout(3 * 1000)
         
         while not self.stop_requested:
             scroll_attempts += 1
@@ -1178,21 +1249,45 @@ class ChatParserFansly:
             """)
             
             # Прокручиваем вверх к началу чата
-            await page.evaluate("""
+            scroll_info = await page.evaluate("""
                 () => {
-                    // Ищем контейнер с прокруткой
-                    const container = document.querySelector('.message-collection') || 
+                    // Ищем контейнер с прокруткой (в порядке приоритета)
+                    const container = document.querySelector('app-group-message-container') ||
+                                    document.querySelector('.message-content-list') ||
+                                    document.querySelector('.message-collection-wrapper') ||
                                     document.querySelector('app-group-message-collection') ||
+                                    document.querySelector('.message-collection') ||
                                     document.querySelector('[class*="message"]');
                     if (container) {
-                        container.scrollTop = 0;
+                        const scrollTopBefore = container.scrollTop;
+                        const scrollHeight = container.scrollHeight;
+                        const clientHeight = container.clientHeight;
+                        
+                        // Прокручиваем большим шагом вверх
+                        container.scrollBy(0, -2000);
+                        
+                        const scrollTopAfter = container.scrollTop;
+                        
+                        return {
+                            found: true,
+                            selector: container.tagName + '.' + container.className,
+                            scrollTopBefore: scrollTopBefore,
+                            scrollTopAfter: scrollTopAfter,
+                            scrollHeight: scrollHeight,
+                            clientHeight: clientHeight,
+                            scrollDelta: scrollTopBefore - scrollTopAfter
+                        };
                     } else {
-                        window.scrollTo(0, 0);
+                        window.scrollBy(0, -2000);
+                        return { found: false, usedWindow: true };
                     }
                 }
             """)
             
-            await page.wait_for_timeout(3 * 1000)
+            print(f"📊 Scroll info: {scroll_info}")
+            
+            # Увеличиваем таймаут для Fansly, чтобы загрузились новые сообщения
+            await page.wait_for_timeout(5 * 1000)
             
             # Считаем количество сообщений после прокрутки
             messages_after = await page.evaluate("""
@@ -1204,11 +1299,16 @@ class ChatParserFansly:
             
             print(f"📊 Messages in DOM: before={messages_before}, after={messages_after}")
             
+            # Проверяем, достигли ли мы верха контейнера
+            if scroll_info.get('found') and scroll_info.get('scrollTopAfter', -1) == 0 and scroll_info.get('scrollDelta', 0) == 0:
+                print(f"✅ Reached the top of the container (scrollTop=0, no scroll delta)")
+                no_new_content_count += 1
+            
             if messages_after == messages_before:
                 no_new_content_count += 1
                 print(f"⏸️ No new messages loaded (count: {no_new_content_count}/5)")
                 
-                if no_new_content_count >= 5:
+                if no_new_content_count >= 3:  # Уменьшаем с 5 до 3, так как теперь проверяем scrollTop
                     print(f"✅ Reached the beginning of the Fansly chat! Total scrolls: {scroll_attempts}")
                     print(f"📝 Total messages in DOM: {messages_after}")
                     break
