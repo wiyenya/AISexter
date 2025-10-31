@@ -32,7 +32,7 @@
                            placeholder="https://onlyfans.com/my/chats/chat/123456 or https://fansly.com/messages/123456"
                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <p class="text-sm text-gray-500 mt-1">
-                        Enter the full URL of the chat you want to parse
+                        🌐 Supports both <span class="font-semibold text-blue-600">OnlyFans</span> and <span class="font-semibold text-purple-600">Fansly</span> - platform is auto-detected
                     </p>
                 </div>
                 
@@ -237,6 +237,7 @@ function displayActiveParsers(parsers) {
     let html = '<div class="overflow-x-auto"><table class="min-w-full divide-y divide-gray-200">';
     html += '<thead class="bg-gray-50"><tr>';
     html += '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Profile</th>';
+    html += '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Platform</th>';
     html += '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Chat URL</th>';
     html += '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Started At</th>';
     html += '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>';
@@ -247,12 +248,23 @@ function displayActiveParsers(parsers) {
         const startedAt = parser.started_at ? new Date(parser.started_at).toLocaleString() : 'Unknown';
         const chatUrlShort = parser.chat_url ? (parser.chat_url.length > 50 ? parser.chat_url.substring(0, 50) + '...' : parser.chat_url) : 'Unknown';
         
+        // Определяем платформу из chat_url если не указана явно
+        let platform = 'OnlyFans'; // default
+        if (parser.chat_url && parser.chat_url.toLowerCase().includes('fansly.com')) {
+            platform = 'Fansly';
+        } else if (parser.chat_url && parser.chat_url.toLowerCase().includes('onlyfans.com')) {
+            platform = 'OnlyFans';
+        }
+        
+        const platformClass = platform === 'Fansly' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800';
+        
         html += '<tr class="hover:bg-gray-50">';
         const statusClass = parser.status === 'error' ? 'bg-red-100 text-red-800' : 
                            parser.status === 'completed' ? 'bg-blue-100 text-blue-800' : 
                            'bg-green-100 text-green-800';
         
         html += `<td class="px-6 py-4 text-sm font-medium text-gray-900">${parser.name || 'Unknown'}</td>`;
+        html += `<td class="px-6 py-4 whitespace-nowrap"><span class="px-2 py-1 text-xs font-semibold rounded-full ${platformClass}">${platform}</span></td>`;
         html += `<td class="px-6 py-4 text-sm text-gray-600" title="${parser.chat_url || ''}">${chatUrlShort}</td>`;
         html += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${startedAt}</td>`;
         html += `<td class="px-6 py-4 whitespace-nowrap"><span class="px-2 py-1 text-xs font-semibold rounded-full ${statusClass}" title="${parser.error_message || ''}">${parser.status || 'running'}</span></td>`;

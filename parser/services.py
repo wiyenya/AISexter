@@ -242,7 +242,7 @@ class OctoAPIClient:
 
 class ChatParser:
     """
-    Парсер для полного сбора сообщений из чата OnlyFans или Fansly
+    Парсер для полного сбора сообщений из чата OnlyFans
     """
     
     def __init__(self, profile_uuid: str, chat_url: str, update_only: bool = False):
@@ -390,7 +390,7 @@ class ChatParser:
             return False
         
     async def handle_response(self, response: Response):
-        """Обработка ответов API для сбора сообщений"""
+        """Обработка ответов API для сбора сообщений OnlyFans"""
         if "onlyfans.com/api2/v2/chats" in response.url and "/messages" in response.url:
             if "application/json" in response.headers.get("content-type", ""):
                 try:
@@ -400,16 +400,6 @@ class ChatParser:
                             await self._process_message(message)
                 except Exception as e:
                     print(f"Failed to parse OnlyFans messages: {e}")
-        
-        elif "fansly.com/api" in response.url and "messages" in response.url:
-            if "application/json" in response.headers.get("content-type", ""):
-                try:
-                    json_body = await response.json()
-                    if 'data' in json_body:
-                        for message in json_body['data']:
-                            await self._process_fansly_message(message)
-                except Exception as e:
-                    print(f"Failed to parse Fansly messages: {e}")
     
     async def _process_message(self, message: dict):
         """Обработка сообщения OnlyFans"""
@@ -451,47 +441,6 @@ class ChatParser:
             
         except Exception as e:
             print(f"Error processing OnlyFans message: {e}")
-    
-    async def _process_fansly_message(self, message: dict):
-        """Обработка сообщения Fansly"""
-        try:
-            from_user = message.get('sender', {})
-            from_user_id = from_user.get('id')
-            from_username = from_user.get('username', '')
-            
-            is_from_model = from_user_id == self.model_user_id
-            
-            # Проверяем информацию о платном сообщении из API
-            is_paid = False
-            amount_paid = 0
-            
-            # В Fansly API может быть информация о цене в разных полях
-            price = message.get('price') or message.get('amount')
-            if price:
-                is_paid = True
-                amount_paid = float(price)
-            
-            # Также проверяем флаги
-            if message.get('isPaid') or message.get('is_paid') or message.get('paid'):
-                is_paid = True
-                if not amount_paid and price:
-                    amount_paid = float(price)
-            
-            message_data = {
-                'from_user_id': str(from_user_id) if from_user_id else None,
-                'from_username': from_username,
-                'message_text': message.get('text', ''),
-                'message_date': self._parse_date(message.get('createdAt')),
-                'is_from_model': is_from_model,
-                'is_paid': is_paid,
-                'amount_paid': amount_paid
-            }
-            
-            self.messages.append(message_data)
-            print(f"Collected Fansly message from {from_username}: {message_data['message_text'][:50]}...")
-            
-        except Exception as e:
-            print(f"Error processing Fansly message: {e}")
     
     def _parse_date(self, date_str):
         """Парсинг даты из ISO формата или времени типа '7:21 pm', '9 pm', 'Yesterday 11:05 pm' или 'Oct 31, 2025 02:37'"""
@@ -1000,4 +949,592 @@ class ChatParser:
             self.last_saved_count = len(self.messages)
         else:
             print("✅ All messages already saved during parsing")
+
+
+class ChatParserFansly:
+    """
+    Парсер для полного сбора сообщений из чата Fansly
+    """
+    
+    def __init__(self, profile_uuid: str, chat_url: str, update_only: bool = False):
+        self.profile_uuid = profile_uuid
+        self.chat_url = chat_url
+        self.messages: list[dict] = []
+        self.scroll_count: int = 0
+        self.max_scrolls: int = 50
+        self.model_user_id = None
+        self.octo = OctoClient.init_from_settings()
+        self.last_saved_count: int = 0
+        self.save_batch_size: int = 100
+        self.stop_requested: bool = False
+        self.update_only: bool = update_only
+        
+        # Получаем model_id из ModelInfo по profile_uuid
+        try:
+            model_info = ModelInfo.objects.filter(model_octo_profile=profile_uuid).first()
+            self.model_id = model_info.model_id if model_info else None
+            print(f"🔍 Found model_id: {self.model_id} for profile {profile_uuid}")
+        except Exception as e:
+            print(f"⚠️ Error getting model_id: {e}")
+            self.model_id = None
+    
+    async def run(self):
+        """Основной метод запуска парсера Fansly"""
+        if self.stop_requested:
+            print("🛑 Stop requested before starting, aborting...")
+            return {'status': 'cancelled', 'message': 'Parser stopped by user'}
+        
+        try:
+            response_data = self.octo.start_profile(self.profile_uuid)
+        except OctoProfileAlreadyStartedException:
+            print("Profile already started, using existing profile")
+            try:
+                profiles_response = requests.get(
+                    f"{self.octo.base_local_url}/api/profiles/active",
+                    timeout=10
+                )
+                if profiles_response.ok:
+                    active_profiles = profiles_response.json()
+                    for profile in active_profiles:
+                        if profile.get('uuid') == self.profile_uuid:
+                            response_data = profile
+                            break
+                    else:
+                        response_data = await sync_to_async(self.octo.force_restart_profile)(self.profile_uuid)
+                else:
+                    response_data = await sync_to_async(self.octo.force_restart_profile)(self.profile_uuid)
+            except Exception as e:
+                print(f"Error getting active profile info: {e}")
+                try:
+                    response_data = await sync_to_async(self.octo.force_restart_profile)(self.profile_uuid)
+                except Exception as restart_error:
+                    print(f"Force restart failed: {restart_error}")
+                    return {'status': 'error', 'message': f'Failed to get profile: {str(e)}'}
+                
+        except OctoProfileStartException as e:
+            error_message = e.args[0]
+            print(f"Profile start error: {error_message}")
+            if self.stop_requested:
+                return {'status': 'cancelled', 'message': 'Parser stopped by user'}
+            return {'status': 'error', 'message': 'Failed to start profile'}
+
+        if not response_data:
+            if self.stop_requested:
+                return {'status': 'cancelled', 'message': 'Parser stopped by user'}
+            return {'status': 'error', 'message': 'Failed to start profile'}
+
+        if self.stop_requested:
+            print("🛑 Stop requested before connecting, stopping profile...")
+            try:
+                self.octo.stop_profile(self.profile_uuid)
+            except:
+                pass
+            return {'status': 'cancelled', 'message': 'Parser stopped by user'}
+
+        ws_endpoint = response_data['ws_endpoint'].replace('127.0.0.1', 'octo')
+        
+        parsing_successful = False
+        try:
+            await self.parse(ws_endpoint)
+            parsing_successful = True
+        except LoginPageException:
+            print("Login page detected - session may have expired")
+            if self.stop_requested:
+                return {'status': 'cancelled', 'message': 'Parser stopped by user'}
+            return {'status': 'error', 'message': 'Login page detected'}
+        except Exception as e:
+            if self.stop_requested:
+                print("🛑 Stop requested during parsing")
+                return {'status': 'cancelled', 'message': 'Parser stopped by user'}
+            print(f"Error during parsing: {e}")
+            return {'status': 'error', 'message': f'Parsing error: {str(e)}'}
+        
+        if parsing_successful:
+            try:
+                profile, created = await sync_to_async(Profile.objects.get_or_create)(
+                    uuid=self.profile_uuid,
+                    defaults={
+                        'model_name': f'Fansly Chat Parser Profile {self.profile_uuid[:8]}',
+                        'is_active': True,
+                        'parsing_interval': 30,
+                    }
+                )
+                profile.last_parsed_at = timezone.now()
+                await sync_to_async(profile.save)()
+            except Exception as e:
+                print(f"Error updating profile: {e}")
+        
+        if parsing_successful and len(self.messages) > 0:
+            print(f"Parsing completed. Collected {len(self.messages)} messages. Stopping profile.")
+            self.octo.stop_profile(self.profile_uuid)
+
+        return {'status': 'ok' if parsing_successful else 'error'}
+    
+    async def check_if_login_page(self, page: Page) -> bool:
+        """Проверка, является ли страница страницей логина Fansly"""
+        try:
+            login_indicators = [
+                'input[type="email"]',
+                'input[type="password"]',
+                'button[type="submit"]',
+                '.login-form',
+                '#login',
+                '[data-testid="login"]'
+            ]
+            
+            for selector in login_indicators:
+                if await page.query_selector(selector):
+                    return True
+            
+            current_url = page.url
+            if 'login' in current_url.lower() or 'signin' in current_url.lower():
+                return True
+                
+            return False
+        except Exception as e:
+            print(f"Error checking login page: {e}")
+            return False
+    
+    async def handle_response(self, response: Response):
+        """Обработка ответов API для сбора сообщений Fansly"""
+        if "fansly.com/api" in response.url and "message" in response.url.lower():
+            if "application/json" in response.headers.get("content-type", ""):
+                try:
+                    json_body = await response.json()
+                    # Fansly API может возвращать данные в разных структурах
+                    if 'response' in json_body and isinstance(json_body['response'], list):
+                        for message in json_body['response']:
+                            await self._process_message(message)
+                    elif isinstance(json_body, list):
+                        for message in json_body:
+                            await self._process_message(message)
+                except Exception as e:
+                    print(f"Failed to parse Fansly messages from API: {e}")
+    
+    async def _process_message(self, message: dict):
+        """Обработка сообщения Fansly из API"""
+        try:
+            # Fansly API структура может отличаться
+            from_user_id = message.get('accountId') or message.get('fromAccountId')
+            
+            is_from_model = str(from_user_id) == str(self.model_id) if from_user_id and self.model_id else False
+            
+            # Проверяем информацию о платном сообщении
+            is_paid = False
+            amount_paid = 0
+            
+            if message.get('price'):
+                is_paid = True
+                amount_paid = float(message.get('price', 0))
+            
+            message_data = {
+                'from_user_id': str(from_user_id) if from_user_id else None,
+                'from_username': message.get('username', 'User'),
+                'message_text': message.get('content', ''),
+                'message_date': self._parse_date(message.get('createdAt')),
+                'is_from_model': is_from_model,
+                'is_paid': is_paid,
+                'amount_paid': amount_paid
+            }
+            
+            self.messages.append(message_data)
+            print(f"Collected Fansly message: {message_data['message_text'][:50]}...")
+            
+        except Exception as e:
+            print(f"Error processing Fansly message: {e}")
+    
+    def _parse_date(self, date_str):
+        """Парсинг даты из ISO формата или timestamp"""
+        if not date_str or date_str == "":
+            return None
+        
+        if isinstance(date_str, datetime.datetime):
+            return date_str
+        
+        date_str = str(date_str).strip()
+        if not date_str or date_str == "":
+            return None
+        
+        # ISO формат
+        try:
+            return datetime.datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+        except (ValueError, AttributeError):
+            pass
+        
+        # Unix timestamp (в миллисекундах или секундах)
+        try:
+            timestamp = float(date_str)
+            # Если timestamp в миллисекундах (больше 10 миллиардов)
+            if timestamp > 10000000000:
+                timestamp = timestamp / 1000
+            return datetime.datetime.fromtimestamp(timestamp)
+        except (ValueError, TypeError):
+            pass
+        
+        return None
+    
+    async def navigate(self, page: Page, browser: Browser):
+        """Навигация по чату Fansly с прокруткой контейнера сообщений"""
+        print(f"🎯 Navigating to Fansly chat: {self.chat_url}")
+        try:
+            await page.goto(self.chat_url, wait_until="domcontentloaded", timeout=60000)
+            await page.wait_for_timeout(5 * 1000)
+        except Exception as e:
+            print(f"First navigation attempt failed: {e}, retrying with networkidle...")
+            try:
+                await page.goto(self.chat_url, wait_until="networkidle", timeout=90000)
+                await page.wait_for_timeout(3 * 1000)
+            except Exception as retry_error:
+                print(f"Navigation retry also failed: {retry_error}")
+                await page.wait_for_timeout(3 * 1000)
+        
+        if await self.check_if_login_page(page):
+            print("Warning: Login page indicators detected, but continuing...")
+        
+        # Ждем загрузки контейнера сообщений Fansly
+        try:
+            # В Fansly сообщения находятся в app-group-message-collection
+            await page.wait_for_selector('app-group-message-collection', timeout=10000)
+            print("✅ Fansly chat messages container loaded")
+        except Exception as e:
+            print(f"⚠️ Warning: Could not find Fansly messages container: {e}")
+            if await self.check_if_login_page(page):
+                print("Confirmed: Login page detected (no messages container)")
+                await page.close()
+                await browser.close()
+                raise LoginPageException()
+        
+        # Если это режим обновления - собираем только текущие сообщения без прокрутки
+        if self.update_only:
+            print("🔄 Update mode: collecting current visible messages only")
+            await page.wait_for_timeout(2 * 1000)
+            await self._collect_messages_from_dom(page)
+            print(f"Total messages collected: {len(self.messages)}")
+            if len(self.messages) > self.last_saved_count:
+                await self._save_messages_batch()
+            return
+        
+        # Обычный режим полного парсинга с прокруткой
+        scroll_attempts = 0
+        no_new_content_count = 0
+        
+        # Находим контейнер для прокрутки
+        scroll_container_selector = '.message-collection, app-group-message-collection'
+        
+        while not self.stop_requested:
+            scroll_attempts += 1
+            print(f"📜 Scrolling Fansly chat... attempt {scroll_attempts} (collected {len(self.messages)} messages so far)")
+            
+            # Считаем количество сообщений до прокрутки
+            messages_before = await page.evaluate("""
+                () => {
+                    const messages = document.querySelectorAll('app-group-message');
+                    return messages.length;
+                }
+            """)
+            
+            # Прокручиваем вверх к началу чата
+            await page.evaluate("""
+                () => {
+                    // Ищем контейнер с прокруткой
+                    const container = document.querySelector('.message-collection') || 
+                                    document.querySelector('app-group-message-collection') ||
+                                    document.querySelector('[class*="message"]');
+                    if (container) {
+                        container.scrollTop = 0;
+                    } else {
+                        window.scrollTo(0, 0);
+                    }
+                }
+            """)
+            
+            await page.wait_for_timeout(3 * 1000)
+            
+            # Считаем количество сообщений после прокрутки
+            messages_after = await page.evaluate("""
+                () => {
+                    const messages = document.querySelectorAll('app-group-message');
+                    return messages.length;
+                }
+            """)
+            
+            print(f"📊 Messages in DOM: before={messages_before}, after={messages_after}")
+            
+            if messages_after == messages_before:
+                no_new_content_count += 1
+                print(f"⏸️ No new messages loaded (count: {no_new_content_count}/5)")
+                
+                if no_new_content_count >= 5:
+                    print(f"✅ Reached the beginning of the Fansly chat! Total scrolls: {scroll_attempts}")
+                    print(f"📝 Total messages in DOM: {messages_after}")
+                    break
+            else:
+                no_new_content_count = 0
+                print(f"✨ Loaded {messages_after - messages_before} new messages, continuing...")
+                
+                # Периодически собираем сообщения и сохраняем
+                if scroll_attempts % 10 == 0:
+                    await self._collect_messages_from_dom(page)
+                    if len(self.messages) - self.last_saved_count >= self.save_batch_size:
+                        await self._save_messages_batch()
+        
+        if self.stop_requested:
+            print(f"🛑 Parsing stopped by user after {scroll_attempts} attempts")
+        else:
+            print(f"✅ Finished scrolling after {scroll_attempts} attempts")
+        
+        # Финальный сбор всех сообщений из DOM
+        await self._collect_messages_from_dom(page)
+        
+        print(f"📊 Total messages collected: {len(self.messages)}")
+        
+        if len(self.messages) > self.last_saved_count:
+            await self._save_messages_batch()
+    
+    async def _collect_messages_from_dom(self, page: Page):
+        """Сбор сообщений напрямую из DOM Fansly"""
+        try:
+            messages_data = await page.evaluate("""
+                () => {
+                    const messages = document.querySelectorAll('app-group-message');
+                    const messagesData = [];
+                    
+                    messages.forEach((messageEl, index) => {
+                        try {
+                            // Текст сообщения находится в .message-text
+                            const textEl = messageEl.querySelector('.message-text');
+                            const messageText = textEl ? textEl.textContent.trim() : '';
+                            
+                            if (!messageText) return;
+                            
+                            // Определяем, от кого сообщение (my-message = от модели)
+                            const isFromModel = messageEl.classList.contains('my-message');
+                            const fromUsername = isFromModel ? 'Model' : 'User';
+                            
+                            // Ищем timestamp
+                            let messageTime = '';
+                            const timestampEl = messageEl.querySelector('.timestamp');
+                            if (timestampEl) {
+                                messageTime = timestampEl.textContent.trim();
+                            }
+                            
+                            // Проверяем платное сообщение
+                            let isPaid = false;
+                            let amountPaid = 0;
+                            
+                            // В Fansly могут быть специальные индикаторы платного контента
+                            const purchasedContent = messageEl.querySelector('.purchased-content');
+                            const priceIndicator = messageEl.querySelector('[class*="price"]');
+                            
+                            if (purchasedContent || priceIndicator) {
+                                isPaid = true;
+                                // Пытаемся найти цену
+                                const allText = messageEl.innerText || messageEl.textContent || '';
+                                const pricePattern = /\\$([\\d,]+(?:\\.\\d{2})?)/;
+                                const priceMatch = allText.match(pricePattern);
+                                if (priceMatch) {
+                                    const priceStr = priceMatch[1].replace(/,/g, '');
+                                    amountPaid = parseFloat(priceStr);
+                                }
+                            }
+                            
+                            // Извлекаем user ID если возможно
+                            let fromUserId = '';
+                            const avatarEl = messageEl.querySelector('[class*="avatar"]');
+                            if (avatarEl) {
+                                // Пытаемся найти href или другие атрибуты с ID
+                                const linkEl = avatarEl.querySelector('a[href]');
+                                if (linkEl) {
+                                    const href = linkEl.getAttribute('href');
+                                    // Извлекаем username или ID из href типа "/username"
+                                    fromUserId = href ? href.replace('/', '') : '';
+                                }
+                            }
+                            
+                            messagesData.push({
+                                from_user_id: fromUserId,
+                                from_username: fromUsername,
+                                message_text: messageText,
+                                message_date: messageTime,
+                                is_from_model: isFromModel,
+                                is_paid: isPaid,
+                                amount_paid: amountPaid
+                            });
+                        } catch (e) {
+                            console.error('Error parsing Fansly message:', e);
+                        }
+                    });
+                    
+                    return messagesData;
+                }
+            """)
+            
+            # Добавляем только уникальные сообщения
+            for message_data in messages_data:
+                if not any(msg['message_text'] == message_data['message_text'] and 
+                          msg['from_username'] == message_data['from_username'] 
+                          for msg in self.messages):
+                    self.messages.append(message_data)
+                    print(f"✅ Collected Fansly message from {message_data['from_username']}: {message_data['message_text'][:50]}...")
+            
+            print(f"📊 Total messages collected from Fansly DOM: {len(messages_data)}")
+            
+        except Exception as e:
+            print(f"❌ Error collecting messages from Fansly DOM: {e}")
+    
+    async def parse(self, ws_endpoint: str):
+        """Основной метод парсинга Fansly"""
+        async with async_playwright() as p:
+            page = None
+            browser = None
+            try:
+                if self.stop_requested:
+                    print("🛑 Stop requested before connecting, aborting...")
+                    return
+                    
+                browser = await p.chromium.connect_over_cdp(ws_endpoint)
+                context = browser.contexts[0]
+                page = await context.new_page()
+                
+                # Подписываемся на ответы API
+                page.on("response", lambda response: asyncio.create_task(self.handle_response(response)))
+                
+                if self.stop_requested:
+                    print("🛑 Stop requested before navigation, aborting...")
+                    return
+                
+                await self.navigate(page, browser)
+                
+            except Exception as e:
+                if self.stop_requested:
+                    print("🛑 Stop requested, parsing aborted")
+                    return
+                print(f"❌ Error during Fansly parsing: {e}")
+                raise
+            finally:
+                if page is not None:
+                    await page.close()
+                if browser is not None:
+                    await browser.close()
+                
+                try:
+                    await sync_to_async(self.save_messages)()
+                except Exception as e:
+                    print(f"❌ Error in final save: {e}")
+    
+    async def _save_messages_batch(self):
+        """Периодическое сохранение батча новых сообщений"""
+        new_messages = self.messages[self.last_saved_count:]
+        if not new_messages:
+            return
+        
+        print(f"💾 Saving Fansly batch: {len(new_messages)} new messages (total collected: {len(self.messages)})")
+        
+        try:
+            await sync_to_async(self._save_messages_sync)(new_messages)
+            self.last_saved_count = len(self.messages)
+            print(f"✅ Fansly batch saved successfully! Total saved so far: {self.last_saved_count}")
+        except Exception as e:
+            print(f"❌ Error saving Fansly batch: {e}")
+    
+    def _save_messages_sync(self, messages_to_save: list[dict]):
+        """Синхронное сохранение списка сообщений Fansly"""
+        try:
+            profile, created = Profile.objects.get_or_create(
+                uuid=self.profile_uuid,
+                defaults={
+                    'model_name': f'Fansly Chat Parser Profile {self.profile_uuid[:8]}',
+                    'is_active': True,
+                    'parsing_interval': 30,
+                }
+            )
+            if created:
+                print(f"✨ Created new profile for Fansly chat parser: {profile.model_name}")
+        except Exception as e:
+            print(f"❌ Error creating profile: {e}")
+            return
+        
+        saved_count = 0
+        saved_full_count = 0
+        
+        for message_data in messages_to_save:
+            try:
+                # Сохраняем в ChatMessage
+                existing = ChatMessage.objects.filter(
+                    profile=profile,
+                    chat_url=self.chat_url,
+                    message_text=message_data['message_text'],
+                    from_username=message_data['from_username'],
+                    message_date=message_data['message_date']
+                ).first()
+                
+                if not existing:
+                    ChatMessage.objects.create(
+                        profile=profile,
+                        chat_url=self.chat_url,
+                        from_user_id=message_data['from_user_id'],
+                        from_username=message_data['from_username'],
+                        message_text=message_data['message_text'],
+                        message_date=message_data['message_date'],
+                        is_from_model=message_data['is_from_model']
+                    )
+                    saved_count += 1
+                
+                # Сохраняем в FullChatMessage
+                if self.model_id:
+                    user_id = message_data.get('from_user_id', '')
+                    user_id_str = str(user_id).strip() if user_id else ''
+                    model_id_str = str(self.model_id).strip() if self.model_id else ''
+                    
+                    is_from_model = (user_id_str == model_id_str) and (user_id_str != '') and (model_id_str != '')
+                    
+                    existing_full = FullChatMessage.objects.filter(
+                        chat_url=self.chat_url,
+                        message=message_data['message_text'],
+                        model_id=self.model_id
+                    ).first()
+                    
+                    if not existing_full:
+                        timestamp = None
+                        if message_data.get('message_date'):
+                            if isinstance(message_data['message_date'], datetime.datetime):
+                                timestamp = message_data['message_date']
+                            else:
+                                timestamp = self._parse_date(str(message_data['message_date']))
+                        
+                        if timestamp is None:
+                            print(f"⚠️ Warning: Could not parse message_date '{message_data.get('message_date')}', using current time as fallback")
+                            timestamp = datetime.datetime.now()
+                        
+                        is_paid = message_data.get('is_paid', False)
+                        amount_paid = message_data.get('amount_paid', 0) or 0
+                        
+                        FullChatMessage.objects.create(
+                            user_id=user_id,
+                            chat_url=self.chat_url,
+                            is_from_model=is_from_model,
+                            message=message_data['message_text'],
+                            timestamp=timestamp,
+                            is_paid=is_paid,
+                            amount_paid=amount_paid,
+                            model_id=self.model_id
+                        )
+                        saved_full_count += 1
+                        
+            except Exception as e:
+                print(f"❌ Error saving Fansly message: {e}")
+        
+        print(f"💾 Saved {saved_count} new Fansly messages to ChatMessage")
+        if self.model_id:
+            print(f"💾 Saved {saved_full_count} new Fansly messages to FullChatMessage with model_id: {self.model_id}")
+    
+    def save_messages(self):
+        """Сохранение всех оставшихся сообщений Fansly в базу данных"""
+        new_messages = self.messages[self.last_saved_count:]
+        if new_messages:
+            print(f"💾 Final Fansly save: {len(new_messages)} remaining messages")
+            self._save_messages_sync(new_messages)
+            self.last_saved_count = len(self.messages)
+        else:
+            print("✅ All Fansly messages already saved during parsing")
 

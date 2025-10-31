@@ -8,12 +8,30 @@ import asyncio
 import threading
 from datetime import datetime
 from .models import Profile, ChatMessage, ModelInfo, FullChatMessage
-from .services import ChatParser, OctoAPIClient, OctoClient
+from .services import ChatParser, ChatParserFansly, OctoAPIClient, OctoClient
 from django.conf import settings
 
 # Глобальный словарь для отслеживания активных потоков парсинга
 active_parsing_threads = {}
 threads_lock = threading.Lock()
+
+
+def detect_platform(chat_url: str) -> str:
+    """Определяет платформу по URL чата
+    
+    Args:
+        chat_url: URL чата
+        
+    Returns:
+        'onlyfans' или 'fansly'
+    """
+    if 'fansly.com' in chat_url.lower():
+        return 'fansly'
+    elif 'onlyfans.com' in chat_url.lower():
+        return 'onlyfans'
+    else:
+        # По умолчанию возвращаем onlyfans для обратной совместимости
+        return 'onlyfans'
 
 
 def chat_parser_view(request):
@@ -125,8 +143,17 @@ def chat_parser_view(request):
             def run_parser():
                 thread_id = threading.current_thread().ident
                 try:
-                    # Создаем парсер в режиме обновления или полного парсинга
-                    parser = ChatParser(profile_uuid, chat_url, update_only=update_only)
+                    # Определяем платформу по URL
+                    platform = detect_platform(chat_url)
+                    print(f"🔍 Detected platform: {platform}")
+                    
+                    # Создаем парсер в зависимости от платформы
+                    if platform == 'fansly':
+                        parser = ChatParserFansly(profile_uuid, chat_url, update_only=update_only)
+                        parser_name = "ChatParserFansly"
+                    else:
+                        parser = ChatParser(profile_uuid, chat_url, update_only=update_only)
+                        parser_name = "ChatParser"
                     
                     # Регистрируем поток как активный с ссылкой на парсер
                     with threads_lock:
@@ -136,11 +163,12 @@ def chat_parser_view(request):
                             'thread_name': threading.current_thread().name,
                             'started_at': datetime.now().isoformat(),
                             'status': 'running',
-                            'parser': parser  # Сохраняем ссылку на парсер для остановки
+                            'parser': parser,  # Сохраняем ссылку на парсер для остановки
+                            'platform': platform
                         }
                     
-                    logger.info(f"🚀 Starting ChatParser for profile {profile_uuid} and URL {chat_url}")
-                    print(f"🚀 Starting ChatParser for profile {profile_uuid} and URL {chat_url}")
+                    logger.info(f"🚀 Starting {parser_name} for profile {profile_uuid} and URL {chat_url}")
+                    print(f"🚀 Starting {parser_name} ({platform}) for profile {profile_uuid} and URL {chat_url}")
                     result = asyncio.run(parser.run())
                     logger.info(f"✅ Parser finished with result: {result}")
                     print(f"✅ Parser finished with result: {result}")
@@ -242,8 +270,15 @@ def start_chat_parsing(request):
         def run_parser():
             thread_id = threading.current_thread().ident
             try:
-                # Создаем парсер
-                parser = ChatParser(profile_uuid, chat_url)
+                # Определяем платформу по URL
+                platform = detect_platform(chat_url)
+                print(f"🔍 Detected platform: {platform}")
+                
+                # Создаем парсер в зависимости от платформы
+                if platform == 'fansly':
+                    parser = ChatParserFansly(profile_uuid, chat_url)
+                else:
+                    parser = ChatParser(profile_uuid, chat_url)
                 
                 # Регистрируем поток как активный с ссылкой на парсер
                 with threads_lock:
@@ -253,7 +288,8 @@ def start_chat_parsing(request):
                         'thread_name': threading.current_thread().name,
                         'started_at': datetime.now().isoformat(),
                         'status': 'running',
-                        'parser': parser  # Сохраняем ссылку на парсер для остановки
+                        'parser': parser,  # Сохраняем ссылку на парсер для остановки
+                        'platform': platform
                     }
                 result = asyncio.run(parser.run())
                 
@@ -430,8 +466,15 @@ def update_chat(request):
         def run_updater():
             thread_id = threading.current_thread().ident
             try:
-                # Создаем парсер в режиме обновления
-                parser = ChatParser(profile_uuid, chat_url, update_only=True)
+                # Определяем платформу по URL
+                platform = detect_platform(chat_url)
+                print(f"🔍 Detected platform for update: {platform}")
+                
+                # Создаем парсер в режиме обновления в зависимости от платформы
+                if platform == 'fansly':
+                    parser = ChatParserFansly(profile_uuid, chat_url, update_only=True)
+                else:
+                    parser = ChatParser(profile_uuid, chat_url, update_only=True)
                 
                 # Регистрируем поток как активный
                 with threads_lock:
@@ -441,7 +484,8 @@ def update_chat(request):
                         'thread_name': threading.current_thread().name,
                         'started_at': datetime.now().isoformat(),
                         'status': 'running',
-                        'parser': parser
+                        'parser': parser,
+                        'platform': platform
                     }
                 
                 result = asyncio.run(parser.run())
