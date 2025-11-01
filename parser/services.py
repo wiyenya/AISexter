@@ -1473,14 +1473,27 @@ class ChatParserFansly:
                             }
                             
                             // Проверяем платное сообщение
+                            // В Fansly весь контент делится на купленный и некупленный
+                            // Бесплатно отправленный отображается по дефолту как купленный
+                            // Нужно проверить наличие purchased-content или purchased-avatar (включая not-purchased)
                             let isPaid = false;
                             let amountPaid = 0;
                             
-                            // В Fansly могут быть специальные индикаторы платного контента
+                            // Ищем purchased-content или purchased-avatar внутри сообщения или его attachment
                             const purchasedContent = messageEl.querySelector('.purchased-content');
-                            const priceIndicator = messageEl.querySelector('[class*="price"]');
+                            const purchasedAvatar = messageEl.querySelector('.purchased-avatar');
+                            const messageAttachment = messageEl.querySelector('message-attachment');
                             
-                            if (purchasedContent || priceIndicator) {
+                            // Если есть message-attachment, ищем внутри него
+                            let attachmentPurchasedContent = null;
+                            let attachmentPurchasedAvatar = null;
+                            if (messageAttachment) {
+                                attachmentPurchasedContent = messageAttachment.querySelector('.purchased-content');
+                                attachmentPurchasedAvatar = messageAttachment.querySelector('.purchased-avatar');
+                            }
+                            
+                            // Если найден любой из индикаторов платного контента - это платное сообщение
+                            if (purchasedContent || purchasedAvatar || attachmentPurchasedContent || attachmentPurchasedAvatar) {
                                 isPaid = true;
                                 // Пытаемся найти цену
                                 const allText = messageEl.innerText || messageEl.textContent || '';
