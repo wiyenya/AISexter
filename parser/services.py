@@ -1397,8 +1397,31 @@ class ChatParserFansly:
                         try {
                             // Текст сообщения находится в .message-text
                             const textEl = messageEl.querySelector('.message-text');
-                            const messageText = textEl ? textEl.textContent.trim() : '';
+                            let messageText = textEl ? textEl.textContent.trim() : '';
                             
+                            // Проверяем наличие медиа контента
+                            // Медиа может быть в самом сообщении или в родительских элементах
+                            // Структура: message embed > message-attachment > app-group-message-attachment
+                            const hasMediaInElement = messageEl.querySelector('.message-attachment') || 
+                                                     messageEl.querySelector('message-attachment') ||
+                                                     messageEl.querySelector('app-group-message-attachment');
+                            
+                            // Проверяем родительские элементы
+                            const parentMessageEmbed = messageEl.closest('.message.embed');
+                            const hasMediaInParent = parentMessageEmbed && (
+                                parentMessageEmbed.querySelector('.message-attachment') ||
+                                parentMessageEmbed.querySelector('message-attachment') ||
+                                parentMessageEmbed.querySelector('app-group-message-attachment')
+                            );
+                            
+                            const hasMedia = hasMediaInElement || hasMediaInParent;
+                            
+                            // Если нет текста, но есть медиа - используем "Media" и помечаем как платное
+                            if (!messageText && hasMedia) {
+                                messageText = 'Media';
+                            }
+                            
+                            // Пропускаем сообщения без текста и без медиа
                             if (!messageText) return;
                             
                             // Определяем, от кого сообщение (my-message = от модели)
@@ -1479,29 +1502,34 @@ class ChatParserFansly:
                             let isPaid = false;
                             let amountPaid = 0;
                             
-                            // Ищем purchased-content или purchased-avatar внутри сообщения или его attachment
-                            const purchasedContent = messageEl.querySelector('.purchased-content');
-                            const purchasedAvatar = messageEl.querySelector('.purchased-avatar');
-                            const messageAttachment = messageEl.querySelector('message-attachment');
-                            
-                            // Если есть message-attachment, ищем внутри него
-                            let attachmentPurchasedContent = null;
-                            let attachmentPurchasedAvatar = null;
-                            if (messageAttachment) {
-                                attachmentPurchasedContent = messageAttachment.querySelector('.purchased-content');
-                                attachmentPurchasedAvatar = messageAttachment.querySelector('.purchased-avatar');
-                            }
-                            
-                            // Если найден любой из индикаторов платного контента - это платное сообщение
-                            if (purchasedContent || purchasedAvatar || attachmentPurchasedContent || attachmentPurchasedAvatar) {
+                            // Если сообщение содержит только медиа (messageText === 'Media'), оно всегда платное
+                            if (messageText === 'Media') {
                                 isPaid = true;
-                                // Пытаемся найти цену
-                                const allText = messageEl.innerText || messageEl.textContent || '';
-                                const pricePattern = /\\$([\\d,]+(?:\\.\\d{2})?)/;
-                                const priceMatch = allText.match(pricePattern);
-                                if (priceMatch) {
-                                    const priceStr = priceMatch[1].replace(/,/g, '');
-                                    amountPaid = parseFloat(priceStr);
+                            } else {
+                                // Ищем purchased-content или purchased-avatar внутри сообщения или его attachment
+                                const purchasedContent = messageEl.querySelector('.purchased-content');
+                                const purchasedAvatar = messageEl.querySelector('.purchased-avatar');
+                                const messageAttachment = messageEl.querySelector('message-attachment');
+                                
+                                // Если есть message-attachment, ищем внутри него
+                                let attachmentPurchasedContent = null;
+                                let attachmentPurchasedAvatar = null;
+                                if (messageAttachment) {
+                                    attachmentPurchasedContent = messageAttachment.querySelector('.purchased-content');
+                                    attachmentPurchasedAvatar = messageAttachment.querySelector('.purchased-avatar');
+                                }
+                                
+                                // Если найден любой из индикаторов платного контента - это платное сообщение
+                                if (purchasedContent || purchasedAvatar || attachmentPurchasedContent || attachmentPurchasedAvatar) {
+                                    isPaid = true;
+                                    // Пытаемся найти цену
+                                    const allText = messageEl.innerText || messageEl.textContent || '';
+                                    const pricePattern = /\\$([\\d,]+(?:\\.\\d{2})?)/;
+                                    const priceMatch = allText.match(pricePattern);
+                                    if (priceMatch) {
+                                        const priceStr = priceMatch[1].replace(/,/g, '');
+                                        amountPaid = parseFloat(priceStr);
+                                    }
                                 }
                             }
                             
