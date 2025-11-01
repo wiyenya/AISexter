@@ -1100,7 +1100,7 @@ class ChatParserFansly:
             print(f"Error processing Fansly message: {e}")
     
     def _parse_date(self, date_str):
-        """Парсинг даты из ISO формата или timestamp"""
+        """Парсинг даты из ISO формата, timestamp или формата Fansly типа 'Oct 31, 19:46'"""
         if not date_str or date_str == "":
             return None
         
@@ -1115,6 +1115,57 @@ class ChatParserFansly:
         try:
             return datetime.datetime.fromisoformat(date_str.replace('Z', '+00:00'))
         except (ValueError, AttributeError):
+            pass
+        
+        # Формат Fansly: "Oct 31, 19:46" или "Oct 31, 2024 19:46"
+        try:
+            import re
+            
+            # Паттерн для формата "Oct 31, 19:46" (без года, используется текущий год)
+            date_time_pattern = r'([A-Za-z]{3})\s+(\d{1,2}),\s+(\d{1,2}):(\d{2})'
+            match = re.search(date_time_pattern, date_str)
+            if match:
+                month_abbr = match.group(1)
+                day = int(match.group(2))
+                hour = int(match.group(3))
+                minute = int(match.group(4))
+                
+                # Преобразуем сокращенное название месяца в число
+                months = {
+                    'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
+                    'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12
+                }
+                month = months.get(month_abbr.lower()[:3])
+                if month:
+                    # Используем текущий год
+                    now = datetime.datetime.now()
+                    year = now.year
+                    try:
+                        return datetime.datetime(year, month, day, hour, minute, 0)
+                    except ValueError:
+                        pass
+            
+            # Паттерн для формата "Oct 31, 2024 19:46" (с годом)
+            date_time_pattern_with_year = r'([A-Za-z]{3})\s+(\d{1,2}),\s+(\d{4})\s+(\d{1,2}):(\d{2})'
+            match = re.search(date_time_pattern_with_year, date_str)
+            if match:
+                month_abbr = match.group(1)
+                day = int(match.group(2))
+                year = int(match.group(3))
+                hour = int(match.group(4))
+                minute = int(match.group(5))
+                
+                months = {
+                    'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
+                    'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12
+                }
+                month = months.get(month_abbr.lower()[:3])
+                if month:
+                    try:
+                        return datetime.datetime(year, month, day, hour, minute, 0)
+                    except ValueError:
+                        pass
+        except Exception:
             pass
         
         # Unix timestamp (в миллисекундах или секундах)
@@ -1353,11 +1404,18 @@ class ChatParserFansly:
                             // Определяем, от кого сообщение (my-message = от модели)
                             const isFromModel = messageEl.classList.contains('my-message');
                             
-                            // Ищем timestamp
+                            // Ищем timestamp - время находится в span.margin-right-text внутри .timestamp
                             let messageTime = '';
                             const timestampEl = messageEl.querySelector('.timestamp');
                             if (timestampEl) {
-                                messageTime = timestampEl.textContent.trim();
+                                // Пробуем найти span.margin-right-text внутри timestamp
+                                const timeSpan = timestampEl.querySelector('span.margin-right-text');
+                                if (timeSpan) {
+                                    messageTime = timeSpan.textContent.trim();
+                                } else {
+                                    // Если не нашли span, берем весь текст из timestamp
+                                    messageTime = timestampEl.textContent.trim();
+                                }
                             }
                             
                             // Проверяем платное сообщение
@@ -1531,8 +1589,8 @@ class ChatParserFansly:
                                 timestamp = self._parse_date(str(message_data['message_date']))
                         
                         if timestamp is None:
-                            print(f"⚠️ Warning: Could not parse message_date '{message_data.get('message_date')}', using current time as fallback")
-                            timestamp = datetime.datetime.now()
+                            print(f"⚠️ Warning: Could not parse message_date '{message_data.get('message_date')}', using 000000 (1970-01-01 00:00:00) as fallback")
+                            timestamp = datetime.datetime(1970, 1, 1, 0, 0, 0)
                         
                         is_paid = message_data.get('is_paid', False)
                         amount_paid = message_data.get('amount_paid', 0) or 0
