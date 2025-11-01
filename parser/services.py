@@ -1405,16 +1405,70 @@ class ChatParserFansly:
                             const isFromModel = messageEl.classList.contains('my-message');
                             
                             // Ищем timestamp - время находится в span.margin-right-text внутри .timestamp
+                            // .timestamp находится на уровне родителя, не внутри app-group-message
+                            // Структура: <app-group-message-collection><div class="flex-row"><div class="flex-col width-100"><div><app-group-message>...</app-group-message></div><div class="timestamp"><span class="margin-right-text">...</span></div></div></div></app-group-message-collection>
                             let messageTime = '';
-                            const timestampEl = messageEl.querySelector('.timestamp');
-                            if (timestampEl) {
-                                // Пробуем найти span.margin-right-text внутри timestamp
-                                const timeSpan = timestampEl.querySelector('span.margin-right-text');
-                                if (timeSpan) {
-                                    messageTime = timeSpan.textContent.trim();
-                                } else {
-                                    // Если не нашли span, берем весь текст из timestamp
-                                    messageTime = timestampEl.textContent.trim();
+                            
+                            // Метод 1: Ищем через closest в app-group-message-collection
+                            const messageCollection = messageEl.closest('app-group-message-collection');
+                            if (messageCollection && !messageTime) {
+                                const timestampEl = messageCollection.querySelector('.timestamp');
+                                if (timestampEl) {
+                                    const timeSpan = timestampEl.querySelector('span.margin-right-text');
+                                    if (timeSpan) {
+                                        messageTime = timeSpan.textContent.trim();
+                                    } else {
+                                        messageTime = timestampEl.textContent.trim();
+                                    }
+                                }
+                            }
+                            
+                            // Метод 2: Ищем через closest в flex-col.width-100 (контейнер сообщения)
+                            if (!messageTime) {
+                                const parentFlexCol = messageEl.closest('.flex-col.width-100');
+                                if (parentFlexCol) {
+                                    const timestampEl = parentFlexCol.querySelector('.timestamp');
+                                    if (timestampEl) {
+                                        const timeSpan = timestampEl.querySelector('span.margin-right-text');
+                                        if (timeSpan) {
+                                            messageTime = timeSpan.textContent.trim();
+                                        } else {
+                                            messageTime = timestampEl.textContent.trim();
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Метод 3: Пробуем найти через родительские элементы
+                            if (!messageTime) {
+                                let parent = messageEl.parentElement;
+                                let attempts = 0;
+                                while (parent && attempts < 5) {
+                                    const timestampEl = parent.querySelector('.timestamp');
+                                    if (timestampEl) {
+                                        const timeSpan = timestampEl.querySelector('span.margin-right-text');
+                                        if (timeSpan) {
+                                            messageTime = timeSpan.textContent.trim();
+                                        } else {
+                                            messageTime = timestampEl.textContent.trim();
+                                        }
+                                        break;
+                                    }
+                                    parent = parent.parentElement;
+                                    attempts++;
+                                }
+                            }
+                            
+                            // Метод 4: Последняя попытка - ищем в самом элементе (на случай другой структуры)
+                            if (!messageTime) {
+                                const timestampEl = messageEl.querySelector('.timestamp');
+                                if (timestampEl) {
+                                    const timeSpan = timestampEl.querySelector('span.margin-right-text');
+                                    if (timeSpan) {
+                                        messageTime = timeSpan.textContent.trim();
+                                    } else {
+                                        messageTime = timestampEl.textContent.trim();
+                                    }
                                 }
                             }
                             
